@@ -269,6 +269,9 @@ export type {
 export type {
   ExternalObject,
   ExternalObjectMention,
+  ExternalObjectMentionGroup,
+  ExternalObjectSummary,
+  ExternalObjectSummaryItem,
 } from "./external-object.js";
 export type {
   Issue,

@@ -56,3 +56,32 @@ export interface ExternalObjectMention {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface ExternalObjectMentionGroup {
+  object: ExternalObject | null;
+  mentions: ExternalObjectMention[];
+  mentionCount: number;
+  sourceLabels: string[];
+}
+
+export interface ExternalObjectSummaryItem {
+  id: string;
+  providerKey: string;
+  objectType: string;
+  displayTitle: string | null;
+  statusCategory: ExternalObjectStatusCategory;
+  statusTone: ExternalObjectStatusTone;
+  liveness: ExternalObjectLivenessState;
+  isTerminal: boolean;
+}
+
+export interface ExternalObjectSummary {
+  total: number;
+  byStatusCategory: Record<string, number>;
+  byLiveness: Record<string, number>;
+  highestSeverity: ExternalObjectStatusTone;
+  staleCount: number;
+  authRequiredCount: number;
+  unreachableCount: number;
+  objects: ExternalObjectSummaryItem[];
+}
