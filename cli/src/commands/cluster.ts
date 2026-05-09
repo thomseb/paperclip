@@ -152,10 +152,11 @@ export function createClusterCommand(deps: ClusterCommandDeps): ClusterCommand {
         case "remove":        return cmdRemove(rest, deps);
         case "ensure-tenant": return cmdEnsureTenant(rest, deps);
         case "doctor":        return cmdDoctor(rest, deps);
+        case "set-git-credentials": return cmdSetGitCredentials(rest, deps);
         default:
           deps.print(
             `Unknown subcommand: ${sub ?? "(none)"}\n` +
-            `Usage: cluster <add|list|test|remove|ensure-tenant|doctor>`,
+            `Usage: cluster <add|list|test|remove|ensure-tenant|doctor|set-git-credentials>`,
           );
           return 2;
       }
@@ -403,5 +404,36 @@ async function cmdDoctor(argv: string[], deps: ClusterCommandDeps): Promise<numb
     `Apply the reference ClusterRole before first ensure-tenant:\n` +
       `  kubectl apply -f packages/adapters/kubernetes-execution/manifests/paperclip-tenant-manager-clusterrole.yaml`,
   );
+  return 0;
+}
+
+async function cmdSetGitCredentials(argv: string[], deps: ClusterCommandDeps): Promise<number> {
+  const { flags } = parseFlags(argv);
+  const clusterId = flags["cluster"];
+  const companyId = flags["company"];
+  const secretId  = flags["secret-id"];
+  if (!clusterId || !companyId || !secretId) {
+    deps.print(
+      "Usage: cluster set-git-credentials --cluster <id> --company <id> --secret-id <uuid>",
+    );
+    return 2;
+  }
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID.test(secretId)) {
+    deps.print(`Invalid --secret-id: expected a UUID, got "${secretId}"`);
+    return 2;
+  }
+
+  const existing = await deps.tenantPolicies.get(clusterId, companyId);
+  await deps.tenantPolicies.upsert({
+    clusterConnectionId: clusterId,
+    companyId,
+    quota: existing?.quota ?? null,
+    limitRange: existing?.limitRange ?? null,
+    additionalAllowFqdns: existing?.additionalAllowFqdns ?? [],
+    imageOverrides: existing?.imageOverrides ?? null,
+    gitCredentialsSecretId: secretId,
+  });
+  deps.print(`Updated tenant policy: gitCredentialsSecretId=${secretId}`);
   return 0;
 }

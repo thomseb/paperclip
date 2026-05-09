@@ -293,4 +293,44 @@ describe("cluster commands", () => {
     expect(code).not.toBe(0);
     expect(out.join("\n")).toMatch(/usage|cluster/i);
   });
+
+  it("set-git-credentials: writes gitCredentialsSecretId on the tenant policy", async () => {
+    const m = mocks();
+    (m.tenantPolicies.upsert as any).mockResolvedValue({
+      clusterConnectionId: "c-1",
+      companyId: "co-1",
+      quota: null, limitRange: null,
+      additionalAllowFqdns: [],
+      imageOverrides: null,
+      gitCredentialsSecretId: "11111111-1111-1111-1111-111111111111",
+      ciliumDnsAllowlist: [],
+      ciliumEgressCidrs: [],
+      httpProxyUrl: null,
+    });
+    const cmd = createClusterCommand(m);
+    const code = await cmd.run([
+      "set-git-credentials",
+      "--cluster", "c-1",
+      "--company", "co-1",
+      "--secret-id", "11111111-1111-1111-1111-111111111111",
+    ]);
+    expect(code).toBe(0);
+    const arg = (m.tenantPolicies.upsert as any).mock.calls[0][0];
+    expect(arg.gitCredentialsSecretId).toBe("11111111-1111-1111-1111-111111111111");
+    expect(arg.clusterConnectionId).toBe("c-1");
+    expect(arg.companyId).toBe("co-1");
+  });
+
+  it("set-git-credentials: rejects a non-UUID secret-id", async () => {
+    const m = mocks();
+    const cmd = createClusterCommand(m);
+    const code = await cmd.run([
+      "set-git-credentials",
+      "--cluster", "c-1",
+      "--company", "co-1",
+      "--secret-id", "not-a-uuid",
+    ]);
+    expect(code).not.toBe(0);
+    expect(m.tenantPolicies.upsert).not.toHaveBeenCalled();
+  });
 });
