@@ -2821,6 +2821,53 @@ Duplicate headings receive stable suffixes.
       execute.params?.includes("archived"))).toBe(false);
   });
 
+  it("archives a non-default space through update-space without re-resolving it as active", async () => {
+    const harness = createTestHarness({ manifest });
+    const spaceRow = wikiSpaceRow({
+      id: "77777777-7777-4777-8777-7777777777b1",
+      slug: "qa-space",
+      displayName: "QA Space",
+      pathPrefix: "spaces/qa-space",
+      status: "active",
+      settings: { owner: "qa" },
+    });
+    let archived = false;
+    const originalQuery = harness.ctx.db.query.bind(harness.ctx.db);
+    harness.ctx.db.query = async <T,>(sql: string, params?: unknown[]) => {
+      harness.dbQueries.push({ sql, params });
+      if (sql.includes("wiki_spaces") && params?.[2] === "qa-space") {
+        return archived && sql.includes("status <> 'archived'") ? [] as T[] : [spaceRow] as T[];
+      }
+      return originalQuery<T>(sql, params);
+    };
+    const originalExecute = harness.ctx.db.execute.bind(harness.ctx.db);
+    harness.ctx.db.execute = async (sql: string, params?: unknown[]) => {
+      if (sql.includes("UPDATE") && sql.includes("wiki_spaces") && params?.includes("archived")) archived = true;
+      return originalExecute(sql, params);
+    };
+
+    await plugin.definition.setup(harness.ctx);
+    const updated = await harness.performAction<{
+      status: string;
+      space: { slug: string; displayName: string; status: string; settings: Record<string, unknown> };
+    }>("update-space", {
+      companyId: COMPANY_ID,
+      spaceSlug: "qa-space",
+      displayName: "Archived QA",
+      settings: { archivedBy: "test" },
+      status: "archived",
+    });
+
+    expect(updated.status).toBe("ok");
+    expect(updated.space).toMatchObject({
+      slug: "qa-space",
+      displayName: "Archived QA",
+      status: "archived",
+      settings: { owner: "qa", archivedBy: "test" },
+    });
+    expect(archived).toBe(true);
+  });
+
   it("rejects unknown space statuses through update-space", async () => {
     const harness = createTestHarness({ manifest });
     await plugin.definition.setup(harness.ctx);

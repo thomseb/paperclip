@@ -1465,6 +1465,17 @@ export async function updateSpace(ctx: PluginContext, input: UpdateSpaceInput): 
       nextStatus ?? null,
     ],
   );
+  if (nextStatus === "archived") {
+    return {
+      status: "ok",
+      space: {
+        ...space,
+        displayName: nextDisplayName ?? space.displayName,
+        settings: input.settings ? { ...space.settings, ...input.settings } : space.settings,
+        status: "archived",
+      },
+    };
+  }
   return { status: "ok", space: await resolveSpace(ctx, { companyId: input.companyId, wikiId: space.wikiId, spaceSlug: space.slug }) };
 }
 
