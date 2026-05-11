@@ -51,6 +51,7 @@ import type {
 import { createExecutionTargetRegistry } from "./adapters/execution-target-registry.js";
 import { registerKubernetesExecutionTargetDriver } from "./adapters/execution-targets/kubernetes.js";
 import { getAdapterDefaults } from "@paperclipai/execution-target-kubernetes";
+import { buildAdapterManagedWorkspaceRequestJson } from "./adapters/execution-targets/workspace-strategy-json.js";
 import { clusterConnectionsService } from "./services/cluster-connections.js";
 import { getSecretProvider } from "./secrets/provider-registry.js";
 import { bootstrapTokensService } from "./services/bootstrap-tokens.js";
@@ -690,7 +691,7 @@ export async function startServer(): Promise<StartedServer> {
         image: target.imageOverride ?? adapterImage,
         initImage: `${imageRegistry}/agent-runtime-base:v1`,
         paperclipPublicUrl: connection.paperclipPublicUrl ?? process.env.PAPERCLIP_API_URL ?? "",
-        workspaceStrategyJson: JSON.stringify({ kind: "ephemeral" }),
+        workspaceStrategyJson: buildAdapterManagedWorkspaceRequestJson(),
         workspaceStrategyKey: "ephemeral",
         adapterEnv,
       };
