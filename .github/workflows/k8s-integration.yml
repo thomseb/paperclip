@@ -52,8 +52,8 @@ jobs:
           KIND_VERSION: v0.24.0
         run: |
           curl -sLo /tmp/kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
-          curl -sLo /tmp/kind.sha256 "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64.sha256"
-          echo "$(cat /tmp/kind.sha256)  /tmp/kind" | sha256sum -c -
+          curl -sLo /tmp/kind.sha256sum "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64.sha256sum"
+          awk '{ print $1 "  /tmp/kind" }' /tmp/kind.sha256sum | sha256sum -c -
           chmod +x /tmp/kind
           sudo mv /tmp/kind /usr/local/bin/kind
           kind --version
