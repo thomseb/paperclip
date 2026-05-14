@@ -7,6 +7,17 @@ import type {
 
 export type DiffRenderMode = "unified" | "split";
 
+export interface DiffPatchViewModel {
+  kind: WorkspaceDiffFilePatch["kind"];
+  patch: string | null;
+  additions: number;
+  deletions: number;
+  binary: boolean;
+  oversized: boolean;
+  truncated: boolean;
+  warnings: WorkspaceDiffWarning[];
+}
+
 export interface DiffFileViewModel {
   path: string;
   oldPath: string | null;
@@ -18,6 +29,7 @@ export interface DiffFileViewModel {
   truncated: boolean;
   warnings: WorkspaceDiffWarning[];
   patchKinds: WorkspaceDiffFilePatch["kind"][];
+  patches: DiffPatchViewModel[];
   patch: string | null;
 }
 
@@ -47,17 +59,30 @@ export function fileName(filePath: string) {
   return filePath.split("/").filter(Boolean).pop() ?? filePath;
 }
 
+export function buildFilePatches(file: WorkspaceDiffFile): DiffPatchViewModel[] {
+  return file.patches.map((patch) => {
+    const textPatch = patch.patch?.trimEnd() ?? null;
+    return {
+      kind: patch.kind,
+      patch: textPatch && textPatch.length > 0 ? textPatch : null,
+      additions: patch.additions,
+      deletions: patch.deletions,
+      binary: patch.binary,
+      oversized: patch.oversized,
+      truncated: patch.truncated,
+      warnings: patch.warnings,
+    };
+  });
+}
+
 export function buildFilePatch(file: WorkspaceDiffFile): string | null {
-  const patches = file.patches
-    .map((patch) => patch.patch?.trimEnd() ?? "")
-    .filter(Boolean);
-  if (patches.length === 0) return null;
-  return patches.join("\n");
+  return buildFilePatches(file).find((patch) => patch.patch)?.patch ?? null;
 }
 
 export function toFileViewModels(diff: WorkspaceDiffResponse | null | undefined): DiffFileViewModel[] {
   return (diff?.files ?? []).map((file) => {
     const patchWarnings = file.patches.flatMap((patch) => patch.warnings);
+    const patches = buildFilePatches(file);
     return {
       path: file.path,
       oldPath: file.oldPath,
@@ -69,7 +94,8 @@ export function toFileViewModels(diff: WorkspaceDiffResponse | null | undefined)
       truncated: file.truncated,
       warnings: [...file.warnings, ...patchWarnings],
       patchKinds: file.patches.map((patch) => patch.kind),
-      patch: buildFilePatch(file),
+      patches,
+      patch: patches.find((patch) => patch.patch)?.patch ?? null,
     };
   });
 }

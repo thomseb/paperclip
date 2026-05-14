@@ -10,6 +10,7 @@ import {
   statusLabel,
   toFileViewModels,
   type DiffFileViewModel,
+  type DiffPatchViewModel,
   type DiffRenderMode,
 } from "../diff-model.js";
 
@@ -38,7 +39,27 @@ function warningText(file: DiffFileViewModel) {
   if (file.oversized) return "Too large to render";
   if (file.truncated) return "Patch truncated";
   if (file.warnings.length > 0) return file.warnings[0]?.message ?? "Diff warning";
-  if (!file.patch) return "No text patch";
+  if (file.patches.every((patch) => !patch.patch)) return "No text patch";
+  return null;
+}
+
+const PATCH_KIND_LABELS: Record<DiffPatchViewModel["kind"], string> = {
+  staged: "Staged",
+  unstaged: "Unstaged",
+  head: "Head",
+  untracked: "Untracked",
+};
+
+function patchKindLabel(kind: DiffPatchViewModel["kind"]) {
+  return PATCH_KIND_LABELS[kind] ?? "Patch";
+}
+
+function patchWarningText(patch: DiffPatchViewModel) {
+  if (patch.binary) return "Binary file";
+  if (patch.oversized) return "Too large to render";
+  if (patch.truncated) return "Patch truncated";
+  if (patch.warnings.length > 0) return patch.warnings[0]?.message ?? "Diff warning";
+  if (!patch.patch) return "No text patch";
   return null;
 }
 
@@ -139,7 +160,7 @@ function FileDiffPanel({
   mode: DiffRenderMode;
 }) {
   const warning = warningText(file);
-  if (warning || !file.patch) {
+  if (warning) {
     return (
       <div className="border border-dashed border-border bg-background px-4 py-6 text-sm text-muted-foreground">
         {warning ?? "No renderable patch is available for this file."}
@@ -148,16 +169,36 @@ function FileDiffPanel({
   }
 
   return (
-    <div className="overflow-hidden border border-border bg-background">
-      <PatchDiff
-        patch={file.patch}
-        options={{
-          diffStyle: mode,
-          overflow: "scroll",
-          disableLineNumbers: false,
-          themeType: "system",
-        }}
-      />
+    <div className="space-y-3">
+      {file.patches.map((patch) => {
+        const patchWarning = patchWarningText(patch);
+        return (
+          <div key={patch.kind} className="overflow-hidden border border-border bg-background">
+            {file.patches.length > 1 ? (
+              <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">{patchKindLabel(patch.kind)}</span>
+                <span className="font-mono text-emerald-700 dark:text-emerald-300">+{patch.additions}</span>
+                <span className="font-mono text-red-700 dark:text-red-300">-{patch.deletions}</span>
+              </div>
+            ) : null}
+            {patchWarning || !patch.patch ? (
+              <div className="px-4 py-6 text-sm text-muted-foreground">
+                {patchWarning ?? "No renderable patch is available for this file."}
+              </div>
+            ) : (
+              <PatchDiff
+                patch={patch.patch}
+                options={{
+                  diffStyle: mode,
+                  overflow: "scroll",
+                  disableLineNumbers: false,
+                  themeType: "system",
+                }}
+              />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
