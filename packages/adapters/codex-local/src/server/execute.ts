@@ -499,12 +499,13 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       Object.assign(env, paperclipBridge.env);
     }
   }
+  const billingEnv = { ...env };
   const effectiveEnv = Object.fromEntries(
     Object.entries({ ...process.env, ...env }).filter(
       (entry): entry is [string, string] => typeof entry[1] === "string",
     ),
   );
-  const billingType = resolveCodexBillingType(effectiveEnv);
+  const billingType = resolveCodexBillingType(billingEnv);
   const runtimeEnv = Object.fromEntries(
     Object.entries(ensurePathInEnv(effectiveEnv)).filter(
       (entry): entry is [string, string] => typeof entry[1] === "string",
@@ -809,7 +810,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       sessionParams: resolvedSessionParams,
       sessionDisplayId: resolvedSessionId,
       provider: "openai",
-      biller: resolveCodexBiller(effectiveEnv, billingType),
+      biller: resolveCodexBiller(billingEnv, billingType),
       model,
       billingType,
       costUsd: null,
