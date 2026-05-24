@@ -1188,7 +1188,7 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
       },
 
       data: {
-        register(key: string, handler: (params: Record<string, unknown>) => Promise<unknown>): void {
+        register(key: string, handler: PluginDataHandler): void {
           dataHandlers.set(key, handler);
         },
       },

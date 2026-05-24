@@ -15,6 +15,7 @@ import type {
   PluginEventType,
   PluginToolDeclaration,
   PluginLauncherDeclaration,
+  PluginLauncherRenderContextSnapshot,
   Company,
   Project,
   Issue,

@@ -26,6 +26,14 @@ vi.mock("@paperclipai/plugin-sdk/ui", () => {
       navigate: () => {},
       linkProps: (to: string) => ({ href: to, onClick: () => {} }),
     }),
+    useHostContext: () => ({
+      companyId: "company-1",
+      companyPrefix: "PAP",
+      projectId: null,
+      entityId: null,
+      entityType: null,
+      userId: "user-1",
+    }),
     usePluginAction: (key: string) => {
       if (key === "pin-card") return actionCalls.pin;
       if (key === "dismiss-card") return actionCalls.dismiss;
