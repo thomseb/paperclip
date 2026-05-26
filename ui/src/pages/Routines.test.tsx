@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, type AnchorHTMLAttributes, type ReactNode } from "react";
+import type { AnchorHTMLAttributes, ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Issue, RoutineListItem } from "@paperclipai/shared";
@@ -237,6 +237,10 @@ vi.mock("../components/AgentIconPicker", () => ({
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
+async function act(callback: () => void | Promise<void>) {
+  await callback();
+}
+
 function createRoutine(overrides: Partial<RoutineListItem>): RoutineListItem {
   return {
     id: "routine-1",
@@ -456,6 +460,47 @@ describe("Routines page", () => {
     });
   });
 
+  it("defaults the routines list to project groups sorted by title", async () => {
+    routinesListMock.mockResolvedValue([
+      createRoutine({ id: "routine-1", title: "Weekly digest", projectId: "project-1" }),
+      createRoutine({ id: "routine-2", title: "Morning sync", projectId: "project-1" }),
+      createRoutine({ id: "routine-3", title: "Agent review", projectId: "project-2" }),
+    ]);
+    issuesListMock.mockResolvedValue([]);
+
+    const root = createRoot(container);
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+      },
+    });
+
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={queryClient}>
+          <Routines />
+        </QueryClientProvider>,
+      );
+      await flush();
+    });
+
+    for (let attempts = 0; attempts < 5 && !container.textContent?.includes("Project Alpha"); attempts += 1) {
+      await act(async () => {
+        await flush();
+      });
+    }
+
+    const text = container.textContent ?? "";
+    expect(text.indexOf("Project Alpha")).toBeLessThan(text.indexOf("Project Beta"));
+    expect(text.indexOf("Morning sync")).toBeLessThan(text.indexOf("Weekly digest"));
+    expect(text.indexOf("Project Alpha")).toBeLessThan(text.indexOf("Morning sync"));
+    expect(text.indexOf("Weekly digest")).toBeLessThan(text.indexOf("Project Beta"));
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it("shows an outlined row-level run now button on the routines table", async () => {
     routinesListMock.mockResolvedValue([createRoutine({ id: "routine-1", title: "Morning sync" })]);
     issuesListMock.mockResolvedValue([]);
@@ -583,6 +628,12 @@ describe("Routines page", () => {
       );
       await flush();
     });
+
+    for (let attempts = 0; attempts < 5 && issuesListMock.mock.calls.length === 0; attempts += 1) {
+      await act(async () => {
+        await flush();
+      });
+    }
 
     expect(issuesListMock).toHaveBeenCalledWith("company-1", { originKind: "routine_execution" });
 

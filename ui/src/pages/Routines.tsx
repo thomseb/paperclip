@@ -83,9 +83,9 @@ type RoutineGroup = {
 };
 
 const defaultRoutineViewState: RoutineViewState = {
-  sortField: "updated",
-  sortDir: "desc",
-  groupBy: "none",
+  sortField: "title",
+  sortDir: "asc",
+  groupBy: "project",
   collapsedGroups: [],
 };
 
