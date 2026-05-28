@@ -4252,19 +4252,7 @@ export function issueService(db: Db) {
           throw conflict("Accepted-plan decomposition already exists for this revision with a different child set");
         }
 
-        const [updated] = await tx
-          .update(issuePlanDecompositions)
-          .set({
-            acceptedInteractionId: existing.acceptedInteractionId ?? acceptedInteraction.id,
-            ownerAgentId: data.actorAgentId ?? null,
-            ownerUserId: data.actorUserId ?? null,
-            ownerRunId: data.actorRunId ?? null,
-            updatedAt: now,
-          })
-          .where(eq(issuePlanDecompositions.id, existing.id))
-          .returning();
-        if (!updated) throw new Error("Failed to refresh accepted-plan decomposition claim");
-        return updated;
+        return existing;
       });
 
       let currentClaim = initialClaim;

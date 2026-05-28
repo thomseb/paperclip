@@ -3278,13 +3278,9 @@ describeEmbeddedPostgres("accepted plan decomposition", () => {
     await tempDb?.cleanup();
   });
 
-  async function seedAcceptedPlanIssue() {
+  async function seedAcceptedPlanContext() {
     const companyId = randomUUID();
     const goalId = randomUUID();
-    const sourceIssueId = randomUUID();
-    const planDocumentId = randomUUID();
-    const acceptedPlanRevisionId = randomUUID();
-    const acceptedInteractionId = randomUUID();
     const assigneeAgentId = randomUUID();
 
     await db.insert(companies).values({
@@ -3312,11 +3308,58 @@ describeEmbeddedPostgres("accepted plan decomposition", () => {
       level: "task",
       status: "active",
     });
+
+    return { companyId, goalId, assigneeAgentId };
+  }
+
+  async function seedAcceptedPlanIssue(args?: {
+    companyId?: string;
+    goalId?: string;
+    assigneeAgentId?: string;
+    sourceIssueId?: string;
+    issueTitle?: string;
+  }) {
+    const companyId = args?.companyId ?? randomUUID();
+    const goalId = args?.goalId ?? randomUUID();
+    const assigneeAgentId = args?.assigneeAgentId ?? randomUUID();
+    const sourceIssueId = args?.sourceIssueId ?? randomUUID();
+    const planDocumentId = randomUUID();
+    const acceptedPlanRevisionId = randomUUID();
+    const acceptedInteractionId = randomUUID();
+
+    if (!args?.companyId || !args?.goalId || !args?.assigneeAgentId) {
+      await db.insert(companies).values({
+        id: companyId,
+        name: "Paperclip",
+        issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+        requireBoardApprovalForNewAgents: false,
+      });
+      await instanceSettingsService(db).updateExperimental({ enableIsolatedWorkspaces: false });
+      await db.insert(agents).values({
+        id: assigneeAgentId,
+        companyId,
+        name: "CodexCoder",
+        role: "engineer",
+        status: "active",
+        adapterType: "codex_local",
+        adapterConfig: {},
+        runtimeConfig: {},
+        permissions: {},
+      });
+      await db.insert(goals).values({
+        id: goalId,
+        companyId,
+        title: "Accepted plan decomposition",
+        level: "task",
+        status: "active",
+      });
+    }
+
     await db.insert(issues).values({
       id: sourceIssueId,
       companyId,
       goalId,
-      title: "Planning issue",
+      title: args?.issueTitle ?? "Planning issue",
       status: "in_progress",
       priority: "medium",
       workMode: "planning",
@@ -3378,6 +3421,14 @@ describeEmbeddedPostgres("accepted plan decomposition", () => {
     });
 
     return { companyId, sourceIssueId, acceptedPlanRevisionId, assigneeAgentId };
+  }
+
+  async function getAcceptedPlanClaim(sourceIssueId: string) {
+    return db
+      .select()
+      .from(issuePlanDecompositions)
+      .where(eq(issuePlanDecompositions.sourceIssueId, sourceIssueId))
+      .then((rows) => rows[0] ?? null);
   }
 
   it("reuses the same child issue set on repeat decomposition attempts for an accepted plan revision", async () => {
@@ -3474,6 +3525,185 @@ describeEmbeddedPostgres("accepted plan decomposition", () => {
     })).rejects.toMatchObject({
       status: 409,
     });
+  });
+
+  it("serializes concurrent accepted-plan retries for the same parent issue without duplicate children", async () => {
+    const { sourceIssueId, acceptedPlanRevisionId, assigneeAgentId } = await seedAcceptedPlanIssue();
+    const children = [
+      {
+        title: "Persist exact-once decomposition claim",
+        status: "todo" as const,
+        workMode: "standard" as const,
+        priority: "medium" as const,
+      },
+      {
+        title: "Guard concurrent retry callers",
+        status: "todo" as const,
+        workMode: "standard" as const,
+        priority: "medium" as const,
+      },
+    ];
+
+    const initial = await svc.decomposeAcceptedPlan(sourceIssueId, {
+      acceptedPlanRevisionId,
+      children,
+      actorAgentId: assigneeAgentId,
+    });
+    const claim = await getAcceptedPlanClaim(sourceIssueId);
+    expect(claim).not.toBeNull();
+
+    for (const childIssueId of initial.childIssueIds) {
+      await db.delete(issues).where(eq(issues.id, childIssueId));
+    }
+    await db
+      .update(issuePlanDecompositions)
+      .set({
+        status: "in_flight",
+        childIssueIds: [],
+        completedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(issuePlanDecompositions.id, claim!.id));
+
+    const svcA = issueService(db);
+    const svcB = issueService(db);
+    const [first, second] = await Promise.all([
+      svcA.decomposeAcceptedPlan(sourceIssueId, {
+        acceptedPlanRevisionId,
+        children,
+        actorAgentId: assigneeAgentId,
+      }),
+      svcB.decomposeAcceptedPlan(sourceIssueId, {
+        acceptedPlanRevisionId,
+        children,
+        actorAgentId: assigneeAgentId,
+      }),
+    ]);
+
+    expect(first.childIssueIds).toEqual(second.childIssueIds);
+    expect(first.childIssueIds).toHaveLength(2);
+    expect(first.newlyCreatedIssues.length + second.newlyCreatedIssues.length).toBe(2);
+
+    const persistedClaim = await getAcceptedPlanClaim(sourceIssueId);
+    expect(persistedClaim?.status).toBe("completed");
+    expect(persistedClaim?.childIssueIds).toEqual(first.childIssueIds);
+
+    const childrenRows = await db
+      .select({ id: issues.id, title: issues.title })
+      .from(issues)
+      .where(eq(issues.parentId, sourceIssueId));
+    expect(childrenRows).toHaveLength(2);
+    expect(childrenRows.map((row) => row.id).sort()).toEqual([...first.childIssueIds].sort());
+  });
+
+  it("rejects another planning parent's accepted revision even when both issues share the assignee", async () => {
+    const { companyId, goalId, assigneeAgentId } = await seedAcceptedPlanContext();
+    const firstIssue = await seedAcceptedPlanIssue({
+      companyId,
+      goalId,
+      assigneeAgentId,
+      issueTitle: "Earlier accepted plan",
+    });
+    const secondIssue = await seedAcceptedPlanIssue({
+      companyId,
+      goalId,
+      assigneeAgentId,
+      issueTitle: "Later accepted plan",
+    });
+
+    await svc.decomposeAcceptedPlan(firstIssue.sourceIssueId, {
+      acceptedPlanRevisionId: firstIssue.acceptedPlanRevisionId,
+      children: [
+        {
+          title: "Decompose the first issue only",
+          status: "todo",
+          workMode: "standard",
+          priority: "medium",
+        },
+      ],
+      actorAgentId: assigneeAgentId,
+    });
+
+    await expect(svc.decomposeAcceptedPlan(secondIssue.sourceIssueId, {
+      acceptedPlanRevisionId: firstIssue.acceptedPlanRevisionId,
+      children: [
+        {
+          title: "This must not land on the second parent",
+          status: "todo",
+          workMode: "standard",
+          priority: "medium",
+        },
+      ],
+      actorAgentId: assigneeAgentId,
+    })).rejects.toMatchObject({
+      status: 422,
+    });
+
+    const secondIssueChildren = await db
+      .select({ id: issues.id })
+      .from(issues)
+      .where(eq(issues.parentId, secondIssue.sourceIssueId));
+    expect(secondIssueChildren).toHaveLength(0);
+  });
+
+  it("resumes partial child creation under the claimed fingerprint without duplicating completed children", async () => {
+    const { sourceIssueId, acceptedPlanRevisionId, assigneeAgentId } = await seedAcceptedPlanIssue();
+    const children = [
+      {
+        title: "Create the first child once",
+        status: "todo" as const,
+        workMode: "standard" as const,
+        priority: "medium" as const,
+      },
+      {
+        title: "Recreate only the missing tail child",
+        status: "todo" as const,
+        workMode: "standard" as const,
+        priority: "medium" as const,
+      },
+    ];
+
+    const initial = await svc.decomposeAcceptedPlan(sourceIssueId, {
+      acceptedPlanRevisionId,
+      children,
+      actorAgentId: assigneeAgentId,
+    });
+    const claim = await getAcceptedPlanClaim(sourceIssueId);
+    expect(claim).not.toBeNull();
+
+    const [firstChildId, secondChildId] = initial.childIssueIds;
+    expect(firstChildId).toBeTruthy();
+    expect(secondChildId).toBeTruthy();
+
+    await db.delete(issues).where(eq(issues.id, secondChildId!));
+    await db
+      .update(issuePlanDecompositions)
+      .set({
+        status: "in_flight",
+        childIssueIds: [firstChildId!],
+        completedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(issuePlanDecompositions.id, claim!.id));
+
+    const retried = await svc.decomposeAcceptedPlan(sourceIssueId, {
+      acceptedPlanRevisionId,
+      children,
+      actorAgentId: assigneeAgentId,
+    });
+
+    expect(retried.decomposition.status).toBe("completed");
+    expect(retried.childIssueIds[0]).toBe(firstChildId);
+    expect(retried.newlyCreatedIssues).toHaveLength(1);
+    expect(retried.newlyCreatedIssues[0]?.title).toBe("Recreate only the missing tail child");
+
+    const childrenRows = await db
+      .select({ id: issues.id, title: issues.title })
+      .from(issues)
+      .where(eq(issues.parentId, sourceIssueId));
+    expect(childrenRows).toHaveLength(2);
+    expect(childrenRows.some((row) => row.id === firstChildId)).toBe(true);
+    expect(childrenRows.map((row) => row.title).sort()).toEqual(children.map((child) => child.title).sort());
   });
 
   it("lists persisted decompositions with child issue summaries", async () => {
