@@ -2,7 +2,6 @@ import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type {
   Agent,
-  CatalogTeam,
   CatalogTeamImportPreviewResult,
   CompanyPortabilityCollisionStrategy,
 } from "@paperclipai/shared";
@@ -13,98 +12,24 @@ import {
   StepSkillPlan,
   StepSourcePolicy,
   StepTargetManager,
+  TeamCard,
   TeamDetailPane,
   TeamRow,
 } from "@/pages/TeamCatalog";
+import {
+  onboardingTeams,
+  optionalTeam,
+  sampleTeam as baseTeam,
+  warnTeam,
+} from "@/pages/TeamCatalog.fixtures";
 
 // ---------------------------------------------------------------------------
 // Fixtures
+//
+// Team fixtures (baseTeam/optionalTeam/warnTeam) are shared with the in-app
+// /design-guide showcase via @/pages/TeamCatalog.fixtures so the two surfaces
+// stay in sync. Preview/agent fixtures below are story-only.
 // ---------------------------------------------------------------------------
-
-const baseTeam: CatalogTeam = {
-  id: "paperclipai:bundled:company-defaults:core-exec-team",
-  key: "paperclipai/bundled/company-defaults/core-exec-team",
-  kind: "bundled",
-  category: "company-defaults",
-  slug: "core-exec-team",
-  name: "Core Exec Team",
-  description:
-    "A starter executive team: a CEO who manages a CTO and a CMO, plus a launch project and a weekly standup routine. Installs ready-to-run agents you can customize.",
-  path: "catalog/bundled/company-defaults/core-exec-team",
-  entrypoint: "TEAM.md",
-  schema: "agentcompanies/v1",
-  defaultInstall: true,
-  recommendedForCompanyTypes: ["company-root"],
-  tags: ["exec", "starter"],
-  counts: {
-    agents: 3,
-    projects: 1,
-    tasks: 1,
-    routines: 1,
-    localSkills: 1,
-    catalogSkills: 1,
-    externalSkillSources: 1,
-  },
-  rootAgentSlugs: ["ceo"],
-  agentSlugs: ["ceo", "cto", "cmo"],
-  projectSlugs: ["launch"],
-  requiredSkills: [
-    { type: "catalog", ref: "engineering/code-review", agentSlugs: ["cto"], resolved: true, catalogSkillKey: "engineering/code-review" },
-    { type: "github", ref: "acme/growth-playbook@v1.2.0", agentSlugs: ["cmo"], resolved: false, sourceRef: "v1.2.0" },
-  ],
-  envInputs: [
-    { key: "OPENAI_API_KEY", agentSlug: "cto", projectSlug: null, kind: "secret", requirement: "required" },
-    { key: "DEFAULT_TIMEZONE", agentSlug: null, projectSlug: "launch", kind: "plain", requirement: "optional" },
-  ],
-  sourceRefs: [
-    { type: "github", ref: "acme/growth-playbook@v1.2.0", pinned: true },
-    { type: "url", ref: "https://example.com/policies/brand.md", pinned: false },
-  ],
-  files: [
-    { path: "TEAM.md", kind: "team", sizeBytes: 2144, sha256: "a1" },
-    { path: "README.md", kind: "readme", sizeBytes: 980, sha256: "a2" },
-    { path: "agents/ceo/AGENTS.md", kind: "agent", sizeBytes: 1200, sha256: "a3" },
-    { path: "agents/cto/AGENTS.md", kind: "agent", sizeBytes: 1100, sha256: "a4" },
-    { path: "agents/cmo/AGENTS.md", kind: "agent", sizeBytes: 1050, sha256: "a5" },
-    { path: "projects/launch/PROJECT.md", kind: "project", sizeBytes: 640, sha256: "a6" },
-  ],
-  trustLevel: "external_sources",
-  compatibility: "compatible",
-  contentHash: "sha256:deadbeefdeadbeefdeadbeefdeadbeef",
-  packageName: "@paperclipai/teams-catalog",
-  packageVersion: "0.1.0",
-};
-
-const optionalTeam: CatalogTeam = {
-  ...baseTeam,
-  id: "paperclipai:optional:software-development:platform-pod",
-  key: "paperclipai/optional/software-development/platform-pod",
-  kind: "optional",
-  category: "software-development",
-  slug: "platform-pod",
-  name: "Platform Engineering Pod",
-  description: "An optional platform pod with a tech lead and two engineers.",
-  recommendedForCompanyTypes: [],
-  counts: { ...baseTeam.counts, agents: 4, routines: 2 },
-  rootAgentSlugs: ["tech-lead"],
-  agentSlugs: ["tech-lead", "eng-1", "eng-2", "sre"],
-  trustLevel: "markdown_only",
-  sourceRefs: [],
-};
-
-const warnTeam: CatalogTeam = {
-  ...baseTeam,
-  id: "paperclipai:optional:research:lab-with-local-source",
-  slug: "lab-with-local-source",
-  name: "Research Lab (local source)",
-  kind: "optional",
-  category: "research",
-  trustLevel: "scripts_executables",
-  sourceRefs: [
-    { type: "url", ref: "https://example.com/unpinned.md", pinned: false },
-    { type: "local_path", ref: "/Users/dev/skills/secret-sauce", pinned: false },
-  ],
-};
 
 const companyAgents: Agent[] = [
   makeAgent("agent-1", "Founder", "ceo"),
@@ -345,6 +270,43 @@ export const InstallApplyProgress: Story = {
     <Frame>
       <ApplyProgress team={baseTeam} />
     </Frame>
+  ),
+};
+
+// Onboarding seam (design §6 + §12.5): the TeamCard tile rendered in the
+// 3-col "Pick a starter team" grid, with the first defaultInstall tile selected.
+export const OnboardingTeamGrid: Story = {
+  render: function Render() {
+    const [selectedId, setSelectedId] = useState(onboardingTeams[0]?.id ?? null);
+    return (
+      <Frame width="max-w-2xl">
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold">Pick a starter team</h2>
+          <p className="text-sm text-muted-foreground">
+            We&apos;ll set up agents, projects, and routines so you can start with a working team.
+          </p>
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {onboardingTeams.map((team) => (
+            <TeamCard
+              key={team.id}
+              team={team}
+              selected={team.id === selectedId}
+              onSelect={() => setSelectedId(team.id)}
+            />
+          ))}
+        </div>
+      </Frame>
+    );
+  },
+};
+
+// A single TeamCard in its selected state.
+export const TeamCardSelected: Story = {
+  render: () => (
+    <div className="mx-auto w-64">
+      <TeamCard team={onboardingTeams[0]} selected onSelect={noop} />
+    </div>
   ),
 };
 
