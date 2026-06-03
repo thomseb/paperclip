@@ -64,6 +64,8 @@ const assetSvc = {
 
 const secretSvc = {
   normalizeAdapterConfigForPersistence: vi.fn(async (_companyId: string, config: Record<string, unknown>) => config),
+  normalizeEnvBindingsForPersistence: vi.fn(async (_companyId: string, env: Record<string, unknown>) => env),
+  syncEnvBindingsForTarget: vi.fn(async () => []),
   resolveAdapterConfigForRuntime: vi.fn(async (_companyId: string, config: Record<string, unknown>) => ({ config, secretKeys: new Set<string>() })),
 };
 
@@ -130,6 +132,8 @@ describe("company portability", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     secretSvc.normalizeAdapterConfigForPersistence.mockImplementation(async (_companyId, config) => config);
+    secretSvc.normalizeEnvBindingsForPersistence.mockImplementation(async (_companyId, env) => env);
+    secretSvc.syncEnvBindingsForTarget.mockResolvedValue([]);
     secretSvc.resolveAdapterConfigForRuntime.mockImplementation(async (_companyId, config) => ({
       config,
       secretKeys: new Set<string>(),
@@ -2980,6 +2984,142 @@ describe("company portability", () => {
     })).rejects.toThrow('Adapter type "process" is not allowed in safe imports');
 
     expect(agentSvc.create).not.toHaveBeenCalled();
+  });
+
+  it("reports unsafe project workspace commands on agent-safe import preview", async () => {
+    const portability = companyPortabilityService({} as any);
+
+    const preview = await portability.previewImport({
+      source: {
+        type: "inline",
+        files: {
+          "COMPANY.md": "---\nname: Import\nincludes:\n  - projects/app/PROJECT.md\n---\n",
+          "projects/app/PROJECT.md": "---\nname: App\nslug: app\n---\n\n# App\n",
+          ".paperclip.yaml": [
+            "schema: paperclip/v1",
+            "projects:",
+            "  app:",
+            "    workspaces:",
+            "      default:",
+            "        name: App",
+            "        repoUrl: https://github.com/paperclipai/paperclip",
+            "        setupCommand: pnpm install",
+            "",
+          ].join("\n"),
+        },
+      },
+      include: {
+        company: false,
+        agents: false,
+        projects: true,
+        issues: false,
+      },
+      target: {
+        mode: "existing_company",
+        companyId: "company-1",
+      },
+      collisionStrategy: "rename",
+    }, {
+      mode: "agent_safe",
+      sourceCompanyId: "company-1",
+    });
+
+    expect(preview.errors).toContain("Safe import does not allow project app workspace default setupCommand.");
+  });
+
+  it("reports invalid imported project env on agent-safe import preview", async () => {
+    const portability = companyPortabilityService({} as any);
+    secretSvc.normalizeEnvBindingsForPersistence.mockRejectedValueOnce(new Error("Secret must belong to same company"));
+
+    const preview = await portability.previewImport({
+      source: {
+        type: "inline",
+        files: {
+          "COMPANY.md": "---\nname: Import\nincludes:\n  - projects/app/PROJECT.md\n---\n",
+          "projects/app/PROJECT.md": "---\nname: App\nslug: app\n---\n\n# App\n",
+          ".paperclip.yaml": [
+            "schema: paperclip/v1",
+            "projects:",
+            "  app:",
+            "    inputs:",
+            "      env:",
+            "        API_KEY:",
+            "          kind: secret",
+            "          requirement: required",
+            "    env:",
+            "      API_KEY:",
+            "        type: secret_ref",
+            "        secretId: 22222222-2222-4222-8222-222222222222",
+            "        version: latest",
+            "",
+          ].join("\n"),
+        },
+      },
+      include: {
+        company: false,
+        agents: false,
+        projects: true,
+        issues: false,
+      },
+      target: {
+        mode: "existing_company",
+        companyId: "company-1",
+      },
+      collisionStrategy: "rename",
+    }, {
+      mode: "agent_safe",
+      sourceCompanyId: "company-1",
+    });
+
+    expect(preview.errors).toContain("Secret must belong to same company");
+  });
+
+  it("rejects unsafe routine and issue execution overrides on agent-safe import apply", async () => {
+    const portability = companyPortabilityService({} as any);
+
+    await expect(portability.importBundle({
+      source: {
+        type: "inline",
+        files: {
+          "COMPANY.md": "---\nname: Import\nincludes:\n  - agents/ceo/AGENTS.md\n  - projects/app/PROJECT.md\n  - tasks/review/TASK.md\n---\n",
+          "agents/ceo/AGENTS.md": "---\nname: CEO\nslug: ceo\nrole: ceo\n---\n\nLead.",
+          "projects/app/PROJECT.md": "---\nname: App\nslug: app\n---\n\n# App\n",
+          "tasks/review/TASK.md": "---\nname: Review\nslug: review\nproject: app\nassignee: ceo\nrecurring: true\n---\n\nReview.",
+          ".paperclip.yaml": [
+            "schema: paperclip/v1",
+            "tasks:",
+            "  review:",
+            "    executionWorkspaceSettings:",
+            "      mode: isolated_workspace",
+            "    assigneeAdapterOverrides:",
+            "      adapterType: codex_local",
+            "routines:",
+            "  review:",
+            "    triggers:",
+            "      - kind: webhook",
+            "        enabled: true",
+            "",
+          ].join("\n"),
+        },
+      },
+      include: {
+        company: false,
+        agents: true,
+        projects: true,
+        issues: true,
+      },
+      target: {
+        mode: "existing_company",
+        companyId: "company-1",
+      },
+      collisionStrategy: "rename",
+    }, "user-1", {
+      mode: "agent_safe",
+      sourceCompanyId: "company-1",
+    })).rejects.toThrow("Safe import does not allow task review executionWorkspaceSettings.");
+
+    expect(issueSvc.create).not.toHaveBeenCalled();
+    expect(routineSvc.createTrigger).not.toHaveBeenCalled();
   });
 
   it("imports new agents as active while preserving future hire approval settings", async () => {

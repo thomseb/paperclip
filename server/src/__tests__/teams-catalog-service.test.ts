@@ -1,0 +1,154 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { CatalogTeam } from "@paperclipai/teams-catalog";
+
+const mockAgentService = vi.hoisted(() => ({
+  getById: vi.fn(),
+}));
+
+const mockCompanyPortabilityService = vi.hoisted(() => ({
+  previewImport: vi.fn(),
+  importBundle: vi.fn(),
+}));
+
+const mockCompanySkillService = vi.hoisted(() => ({
+  installFromCatalog: vi.fn(),
+  importFromSource: vi.fn(),
+}));
+
+vi.mock("../services/agents.js", () => ({
+  agentService: () => mockAgentService,
+}));
+
+vi.mock("../services/company-portability.js", () => ({
+  companyPortabilityService: () => mockCompanyPortabilityService,
+}));
+
+vi.mock("../services/company-skills.js", () => ({
+  companySkillService: () => mockCompanySkillService,
+}));
+
+vi.mock("../services/activity-log.js", () => ({
+  logActivity: vi.fn(),
+}));
+
+const {
+  collectCatalogTeamSkillPreparations,
+  teamsCatalogService,
+} = await import("../services/teams-catalog.js");
+
+describe("teamsCatalogService", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAgentService.getById.mockResolvedValue({
+      id: "manager-1",
+      companyId: "company-1",
+      name: "Engineering Manager",
+    });
+    mockCompanyPortabilityService.previewImport.mockResolvedValue({
+      include: { company: false, agents: true, projects: true, issues: true, skills: true },
+      targetCompanyId: "company-1",
+      targetCompanyName: "Paperclip",
+      collisionStrategy: "rename",
+      selectedAgentSlugs: ["ceo", "cto"],
+      plan: { companyAction: "none", agentPlans: [], projectPlans: [], issuePlans: [] },
+      manifest: { agents: [], skills: [], projects: [], issues: [], envInputs: [], includes: { company: false, agents: true, projects: true, issues: true, skills: true }, company: null, schemaVersion: 1, generatedAt: new Date().toISOString(), source: null, sidebar: null },
+      files: {},
+      envInputs: [],
+      warnings: [],
+      errors: [],
+    });
+    mockCompanyPortabilityService.importBundle.mockResolvedValue({
+      company: { id: "company-1", name: "Paperclip", action: "unchanged" },
+      agents: [],
+      projects: [],
+      envInputs: [],
+      warnings: [],
+    });
+    mockCompanySkillService.installFromCatalog.mockResolvedValue({
+      action: "created",
+      skill: { key: "paperclipai/bundled/paperclip-operations/task-planning" },
+      catalogSkill: { id: "paperclipai:bundled:paperclip-operations:task-planning" },
+      warnings: [],
+    });
+    mockCompanySkillService.importFromSource.mockResolvedValue({
+      imported: [],
+      warnings: [],
+    });
+  });
+
+  it("builds an inline portability source with catalog skill keys and target-manager reparenting", async () => {
+    const svc = teamsCatalogService({} as any);
+
+    const prepared = await svc.prepareCatalogTeamSource("company-1", "core-exec-team", {
+      targetManagerAgentId: "manager-1",
+    });
+
+    expect(prepared.errors).toEqual([]);
+    expect(prepared.source.files["COMPANY.md"]).toEqual(expect.stringContaining("Core Exec Team"));
+    expect(prepared.source.files["agents/ceo/AGENTS.md"]).toEqual(expect.stringContaining("paperclipai/bundled/paperclip-operations/task-planning"));
+    expect(prepared.source.files["agents/cto/AGENTS.md"]).toEqual(expect.stringContaining("paperclipai/bundled/software-development/github-pr-workflow"));
+    expect(prepared.source.files[".paperclip.yaml"]).toEqual(expect.stringContaining("reportsTo: \"engineering-manager\""));
+  });
+
+  it("previews through company portability in agent-safe mode", async () => {
+    const svc = teamsCatalogService({} as any);
+
+    const preview = await svc.previewCatalogTeamImport("company-1", "content-machine");
+
+    expect(preview.errors).toEqual([]);
+    expect(mockCompanyPortabilityService.previewImport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: { mode: "existing_company", companyId: "company-1" },
+        include: expect.objectContaining({
+          company: false,
+          agents: true,
+          projects: true,
+          issues: true,
+          skills: true,
+        }),
+        source: expect.objectContaining({ type: "inline" }),
+      }),
+      { mode: "agent_safe", sourceCompanyId: "company-1" },
+    );
+  });
+
+  it("classifies unresolved and unsafe external skill requirements as blocked", () => {
+    const fakeTeam: CatalogTeam = {
+      id: "paperclipai:optional:test:unsafe",
+      key: "paperclipai/optional/test/unsafe",
+      kind: "optional",
+      category: "test",
+      slug: "unsafe",
+      name: "Unsafe",
+      description: "Unsafe",
+      path: "catalog/optional/test/unsafe",
+      entrypoint: "TEAM.md",
+      schema: "agentcompanies/v1",
+      defaultInstall: false,
+      recommendedForCompanyTypes: [],
+      tags: [],
+      counts: { agents: 0, projects: 0, tasks: 0, routines: 0, localSkills: 0, catalogSkills: 0, externalSkillSources: 2 },
+      rootAgentSlugs: [],
+      agentSlugs: [],
+      projectSlugs: [],
+      requiredSkills: [
+        { type: "github", ref: "https://github.com/acme/skill", agentSlugs: ["agent"], resolved: true, sourceLocator: "https://github.com/acme/skill" },
+        { type: "catalog", ref: "missing", agentSlugs: ["agent"], resolved: false },
+      ],
+      envInputs: [],
+      sourceRefs: [],
+      files: [],
+      trustLevel: "external_sources",
+      compatibility: "compatible",
+      contentHash: "sha256:test",
+    };
+
+    const result = collectCatalogTeamSkillPreparations(fakeTeam);
+
+    expect(result.errors).toEqual([
+      'External skill source "https://github.com/acme/skill" requires explicit source policy approval.',
+      'Skill requirement "missing" is unresolved in catalog manifest.',
+    ]);
+    expect(result.preparations.map((entry) => entry.action)).toEqual(["blocked", "blocked"]);
+  });
+});

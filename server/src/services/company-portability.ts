@@ -144,6 +144,45 @@ function resolveSkillConflictStrategy(mode: ImportMode, collisionStrategy: Compa
   return collisionStrategy === "skip" ? "skip" as const : "rename" as const;
 }
 
+function collectAgentSafeImportPolicyErrors(
+  manifest: CompanyPortabilityManifest,
+  include: CompanyPortabilityInclude,
+) {
+  const errors: string[] = [];
+  if (include.projects) {
+    for (const project of manifest.projects) {
+      if (project.executionWorkspacePolicy !== null) {
+        errors.push(`Safe import does not allow project ${project.slug} executionWorkspacePolicy.`);
+      }
+      for (const workspace of project.workspaces) {
+        if (workspace.setupCommand) {
+          errors.push(`Safe import does not allow project ${project.slug} workspace ${workspace.key} setupCommand.`);
+        }
+        if (workspace.cleanupCommand) {
+          errors.push(`Safe import does not allow project ${project.slug} workspace ${workspace.key} cleanupCommand.`);
+        }
+      }
+    }
+  }
+  if (include.issues) {
+    for (const issue of manifest.issues) {
+      if (issue.executionWorkspaceSettings !== null) {
+        errors.push(`Safe import does not allow task ${issue.slug} executionWorkspaceSettings.`);
+      }
+      if (issue.assigneeAdapterOverrides !== null) {
+        errors.push(`Safe import does not allow task ${issue.slug} assigneeAdapterOverrides.`);
+      }
+      const triggers = issue.routine?.triggers ?? [];
+      for (const trigger of triggers) {
+        if (trigger.kind !== "schedule") {
+          errors.push(`Safe import does not allow routine task ${issue.slug} ${trigger.kind} triggers.`);
+        }
+      }
+    }
+  }
+  return errors;
+}
+
 function classifyPortableFileKind(pathValue: string): CompanyPortabilityExportPreviewResult["fileInventory"][number]["kind"] {
   const normalized = normalizePortablePath(pathValue);
   if (normalized === "COMPANY.md") return "company";
@@ -3734,6 +3773,9 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     if (include.company && !manifest.company) {
       errors.push("Manifest does not include company metadata.");
     }
+    if (mode === "agent_safe") {
+      errors.push(...collectAgentSafeImportPolicyErrors(manifest, include));
+    }
 
     const selectedSlugs = include.agents
       ? (
@@ -3849,6 +3891,23 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       if (!targetCompany) throw notFound("Target company not found");
       targetCompanyId = targetCompany.id;
       targetCompanyName = targetCompany.name;
+    }
+    if (mode === "agent_safe" && include.projects && targetCompanyId) {
+      for (const project of manifest.projects) {
+        if (!project.env) continue;
+        try {
+          await secrets.normalizeEnvBindingsForPersistence(
+            targetCompanyId,
+            project.env,
+            {
+              strictMode: strictSecretsMode,
+              fieldPath: `projects.${project.slug}.env`,
+            },
+          );
+        } catch (err) {
+          errors.push(err instanceof Error ? err.message : String(err));
+        }
+      }
     }
 
     const agentPlans: CompanyPortabilityPreviewAgentPlan[] = [];
@@ -4437,6 +4496,16 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
             ?? null
           : null;
         const projectWorkspaceIdByKey = new Map<string, string>();
+        const normalizedProjectEnv = manifestProject.env
+          ? await secrets.normalizeEnvBindingsForPersistence(
+              targetCompany.id,
+              manifestProject.env,
+              {
+                strictMode: strictSecretsMode,
+                fieldPath: `projects.${manifestProject.slug}.env`,
+              },
+            )
+          : null;
         const projectPatch = {
           name: planProject.plannedName,
           description: manifestProject.description,
@@ -4446,7 +4515,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
           status: manifestProject.status && PROJECT_STATUSES.includes(manifestProject.status as any)
             ? manifestProject.status as typeof PROJECT_STATUSES[number]
             : "backlog",
-          env: manifestProject.env,
+          env: normalizedProjectEnv,
           executionWorkspacePolicy: stripPortableProjectExecutionWorkspaceRefs(manifestProject.executionWorkspacePolicy),
         };
 
@@ -4489,6 +4558,12 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         }
 
         if (!projectId) continue;
+
+        await secrets.syncEnvBindingsForTarget?.(
+          targetCompany.id,
+          { targetType: "project", targetId: projectId },
+          normalizedProjectEnv ?? {},
+        );
 
         for (const workspace of manifestProject.workspaces) {
           const createdWorkspace = await projects.createWorkspace(projectId, {

@@ -98,6 +98,27 @@ export {
   type CompanySkillReset,
 } from "./company-skill.js";
 export {
+  catalogTeamKindSchema,
+  catalogTeamTrustLevelSchema,
+  catalogTeamCompatibilitySchema,
+  catalogTeamFileKindSchema,
+  catalogTeamSkillRequirementTypeSchema,
+  catalogTeamSkillRequirementSchema,
+  catalogTeamEnvInputSummarySchema,
+  catalogTeamSourceRefSchema,
+  catalogTeamFileSchema,
+  catalogTeamSchema,
+  catalogTeamListQuerySchema,
+  catalogTeamFileDetailSchema,
+  catalogTeamSourcePolicySchema,
+  catalogTeamPreviewSchema,
+  catalogTeamInstallSchema,
+  catalogTeamSkillPreparationSchema,
+  type CatalogTeamListQuery,
+  type CatalogTeamPreview,
+  type CatalogTeamInstall,
+} from "./teams-catalog.js";
+export {
   agentSkillStateSchema,
   agentSkillSyncModeSchema,
   agentSkillEntrySchema,

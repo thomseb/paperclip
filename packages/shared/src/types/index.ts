@@ -79,6 +79,27 @@ export type {
   CompanySkillInstallCatalogResult,
 } from "./company-skill.js";
 export type {
+  CatalogTeamKind,
+  CatalogTeamTrustLevel,
+  CatalogTeamCompatibility,
+  CatalogTeamFileKind,
+  CatalogTeamSkillRequirementType,
+  CatalogTeamSkillRequirement,
+  CatalogTeamEnvInputSummary,
+  CatalogTeamSourceRef,
+  CatalogTeamFile,
+  CatalogTeam,
+  CatalogTeamListQuery,
+  CatalogTeamFileDetail,
+  CatalogTeamSourcePolicy,
+  CatalogTeamImportOptions,
+  CatalogTeamInstallOptions,
+  CatalogTeamSkillPreparationAction,
+  CatalogTeamSkillPreparation,
+  CatalogTeamImportPreviewResult,
+  CatalogTeamInstallResult,
+} from "./teams-catalog.js";
+export type {
   AgentSkillSyncMode,
   AgentSkillState,
   AgentSkillOrigin,

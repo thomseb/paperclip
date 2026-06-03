@@ -493,6 +493,32 @@ still enforced by the server in both cases.
   require `--yes` in non-interactive use.
 - `--json` prints the raw API result for each command.
 
+## Teams Commands
+
+`paperclipai teams` works with the app-shipped team catalog in
+`@paperclipai/teams-catalog`. Browse, search, inspect, and file reads do not
+change company state. `preview` runs the company import planner, and `install`
+imports the catalog team into an existing company.
+
+```sh
+pnpm paperclipai teams browse [--kind bundled|optional] [--category <slug>] [--query <text>]
+pnpm paperclipai teams search "<text>" [--kind bundled|optional] [--category <slug>]
+pnpm paperclipai teams inspect <catalog-id-or-key-or-slug> [--file TEAM.md]
+pnpm paperclipai teams preview <catalog-id-or-key-or-slug> --company-id <company-id>
+pnpm paperclipai teams install <catalog-id-or-key-or-slug> --company-id <company-id>
+```
+
+Preview/install options:
+
+- `--target-manager-agent-id <id>` or `--target-manager-slug <slug>` reparents
+  catalog root agents under an existing manager.
+- `--agent <slug>` and `--selected-file <path>` narrow the import.
+- `--collision-strategy rename|skip|replace` controls name/key collisions.
+- `--allow-external-sources`, `--allow-unpinned-optional-sources`, and
+  `--allow-local-path-sources` explicitly opt into higher-trust source policy.
+  Local-path sources are development-only and stay blocked unless that flag is
+  passed.
+
 ## Secrets Commands
 
 ```sh
