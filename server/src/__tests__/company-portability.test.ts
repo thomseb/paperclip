@@ -1501,6 +1501,91 @@ describe("company portability", () => {
     );
   });
 
+  it("reparents imported roots to pre-existing target managers before resolving imported hierarchy", async () => {
+    const portability = companyPortabilityService({} as any);
+    agentSvc.list.mockResolvedValue([
+      {
+        id: "existing-ceo",
+        name: "CEO",
+        status: "idle",
+        role: "ceo",
+        adapterType: "claude_local",
+        adapterConfig: {},
+        runtimeConfig: {},
+        budgetMonthlyCents: 0,
+        permissions: {},
+        metadata: null,
+      },
+    ]);
+    agentSvc.create.mockImplementation(async (_companyId: string, input: Record<string, unknown>) => ({
+      id: `${String(input.name).toLowerCase()}-created`,
+      name: input.name,
+      status: input.status,
+      adapterType: input.adapterType,
+      adapterConfig: input.adapterConfig,
+      runtimeConfig: input.runtimeConfig,
+    }));
+
+    await portability.importBundle({
+      source: {
+        type: "inline",
+        rootPath: "paperclip-demo",
+        files: {
+          "COMPANY.md": [
+            "---",
+            'schema: "agentcompanies/v1"',
+            'name: "Imported Paperclip"',
+            "includes:",
+            "  - agents/cto/AGENTS.md",
+            "  - agents/qa/AGENTS.md",
+            "---",
+            "",
+          ].join("\n"),
+          "agents/cto/AGENTS.md": [
+            "---",
+            'name: "CTO"',
+            'slug: "cto"',
+            'kind: "agent"',
+            "---",
+            "",
+            "Lead engineering.",
+            "",
+          ].join("\n"),
+          "agents/qa/AGENTS.md": [
+            "---",
+            'name: "QA"',
+            'slug: "qa"',
+            'kind: "agent"',
+            'reportsTo: "cto"',
+            "---",
+            "",
+            "Verify engineering work.",
+            "",
+          ].join("\n"),
+          ".paperclip.yaml": [
+            'schema: "paperclip/v1"',
+            "agents:",
+            "  cto:",
+            '    reportsToExistingAgentId: "existing-ceo"',
+            '    reportsToExistingAgentSlug: "ceo"',
+            "    adapter:",
+            '      type: "claude_local"',
+            "  qa:",
+            "    adapter:",
+            '      type: "claude_local"',
+            "",
+          ].join("\n"),
+        },
+      },
+      include: { company: false, agents: true, projects: false, issues: false, skills: false },
+      target: { mode: "existing_company", companyId: "company-1" },
+      collisionStrategy: "rename",
+    }, "user-1");
+
+    expect(agentSvc.update).toHaveBeenCalledWith("cto-created", { reportsTo: "existing-ceo" });
+    expect(agentSvc.update).toHaveBeenCalledWith("qa-created", { reportsTo: "cto-created" });
+  });
+
   it("exports project env as portable inputs without concrete values", async () => {
     const portability = companyPortabilityService({} as any);
 
