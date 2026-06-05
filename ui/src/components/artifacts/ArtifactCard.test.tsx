@@ -3,8 +3,17 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/router", () => ({
-  Link: ({ to, children, ...props }: { to: string; children: ReactNode }) => (
-    <a href={to} {...props}>
+  Link: ({
+    to,
+    children,
+    disableIssueQuicklook,
+    ...props
+  }: {
+    to: string;
+    children: ReactNode;
+    disableIssueQuicklook?: boolean;
+  }) => (
+    <a href={to} data-disable-issue-quicklook={disableIssueQuicklook ? "true" : undefined} {...props}>
       {children}
     </a>
   ),
@@ -37,11 +46,33 @@ describe("ArtifactCard", () => {
   it("renders an image preview with cover image and links to the issue anchor", () => {
     const markup = renderToStaticMarkup(<ArtifactCard artifact={makeArtifact()} />);
     expect(markup).toContain('href="/issues/PAP-10306#attachment-art-1"');
+    expect(markup).toContain('data-disable-issue-quicklook="true"');
     expect(markup).toContain('data-media-kind="image"');
+    expect(markup).toContain("rounded-[8px]");
     expect(markup).toContain('src="/files/art-1.png"');
     expect(markup).toContain("object-cover");
     expect(markup).toContain("Hero shot");
-    expect(markup).toContain("PAP-10306");
+    expect(markup).toContain("Last edited Jun 1, 2026");
+    expect(markup).not.toContain("Landing visuals");
+    expect(markup).not.toContain("Edited ");
+  });
+
+  it("renders only the artifact subject and absolute metadata under the preview", () => {
+    const markup = renderToStaticMarkup(
+      <ArtifactCard
+        artifact={makeArtifact({
+          title: "Social launch clip",
+          issue: { id: "issue-2", identifier: "PAP-10370", title: "Make artifact page look like this" },
+          updatedAt: "2025-10-08T12:00:00.000Z",
+          createdByAgent: null,
+        })}
+      />,
+    );
+
+    expect(markup).toContain("Social launch clip");
+    expect(markup).toContain("Last edited Oct 8, 2025");
+    expect(markup).not.toContain("Make artifact page look like this");
+    expect(markup).not.toContain(">PAP-10370<");
   });
 
   it("renders a video preview with a video element and play glyph", () => {
@@ -77,6 +108,11 @@ describe("ArtifactCard", () => {
     );
     expect(markup).toContain('data-media-kind="document"');
     expect(markup).toContain("This is the plan preview excerpt.");
+    expect(markup).toContain("text-base");
+    expect(markup).toContain("leading-6");
+    expect(markup).toContain("max-h-full");
+    expect(markup).toContain("overflow-hidden");
+    expect(markup).not.toContain('data-lucide="file-text"');
   });
 
   it("renders a placeholder for empty artifacts without an image or video", () => {

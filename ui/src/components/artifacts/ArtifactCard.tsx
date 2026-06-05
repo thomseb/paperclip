@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Download, ExternalLink, FileText, Paperclip, Play } from "lucide-react";
+import { Download, ExternalLink, Paperclip, Play } from "lucide-react";
 import type { CompanyArtifact } from "@/api/artifacts";
 import { Link } from "@/lib/router";
-import { cn, relativeTime } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 
 interface ArtifactCardProps {
   artifact: CompanyArtifact;
@@ -88,14 +88,11 @@ function TextPreview({ artifact }: { artifact: CompanyArtifact }) {
   return (
     <PreviewFrame className="bg-card">
       <div className="absolute inset-0 overflow-hidden p-3">
-        <p className="whitespace-pre-wrap break-words text-[11px] leading-5 text-muted-foreground">
+        <p className="max-h-full overflow-hidden whitespace-pre-wrap break-words text-base leading-6 text-muted-foreground/75">
           {preview}
         </p>
       </div>
       <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-card to-transparent" />
-      <div className="absolute left-2 top-2 flex h-6 w-6 items-center justify-center rounded bg-accent/40">
-        <FileText className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-      </div>
     </PreviewFrame>
   );
 }
@@ -146,15 +143,16 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
   return (
     <Link
       to={artifact.href}
+      disableIssueQuicklook
       data-testid="artifact-card"
       data-media-kind={artifact.mediaKind}
-      className="group flex flex-col overflow-hidden rounded-lg border border-border bg-card transition-colors hover:border-foreground/20"
+      className="group flex flex-col overflow-hidden rounded-[8px] border border-border bg-card transition-colors hover:border-foreground/20"
     >
       <ArtifactPreview artifact={artifact} />
 
       <div className="flex flex-1 flex-col gap-1 p-3">
         <div className="flex items-start justify-between gap-2">
-          <h3 className="truncate text-sm font-medium text-foreground" title={artifact.title}>
+          <h3 className="truncate text-sm font-medium text-foreground/85" title={artifact.title}>
             {artifact.title}
           </h3>
           <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
@@ -171,16 +169,8 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <span className="shrink-0 font-medium text-muted-foreground">{artifact.issue.identifier}</span>
-          <span className="text-muted-foreground/50">·</span>
-          <span className="truncate" title={artifact.issue.title}>
-            {artifact.issue.title}
-          </span>
-        </div>
-
-        <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground/80">
-          <span>Edited {relativeTime(artifact.updatedAt)}</span>
+        <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground/65">
+          <span>Last edited {formatDate(artifact.updatedAt)}</span>
           {artifact.createdByAgent ? (
             <>
               <span className="text-muted-foreground/50">·</span>
