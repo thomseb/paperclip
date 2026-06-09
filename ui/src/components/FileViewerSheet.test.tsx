@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { WorkspaceFileContent } from "@paperclipai/shared";
 import type { FileViewerUrlState } from "@/context/FileViewerContext";
+import { ThemeProvider } from "@/context/ThemeContext";
 import { describeDenial, FileContentViewer, FileViewerMetadataRow } from "./FileViewerSheet";
 
 describe("describeDenial", () => {
@@ -115,28 +116,32 @@ describe("FileContentViewer", () => {
     expect(markup).toContain("data:video/mp4;base64,AAAA");
   });
 
-  it("shows a raw/rendered toggle for Markdown files and defaults to raw source", () => {
+  it("shows an icon toggle for Markdown files and defaults to rendered Markdown", () => {
     const markup = renderToStaticMarkup(
-      <FileContentViewer
-        content={content({
-          resource: {
-            ...content().resource,
-            title: "README.md",
-            displayPath: "docs/README.md",
-            contentType: "text/markdown; charset=utf-8",
-          },
-          content: {
-            encoding: "utf8",
-            data: "# Heading\n\nBody",
-          },
-        })}
-        highlightedLine={null}
-      />,
+      <ThemeProvider>
+        <FileContentViewer
+          content={content({
+            resource: {
+              ...content().resource,
+              title: "README.md",
+              displayPath: "docs/README.md",
+              contentType: "text/markdown; charset=utf-8",
+            },
+            content: {
+              encoding: "utf8",
+              data: "# Heading\n\nBody",
+            },
+          })}
+          highlightedLine={null}
+        />
+      </ThemeProvider>,
     );
 
     expect(markup).toContain("Markdown preview mode");
-    expect(markup).toContain('aria-pressed="true"');
-    expect(markup).toContain("README.md source");
+    expect(markup).toContain("Show rendered Markdown");
+    expect(markup).toContain("Show raw Markdown");
+    expect(markup).toContain("README.md rendered Markdown");
+    expect(markup).not.toContain("README.md source");
   });
 
   it("does not show the Markdown toggle for non-Markdown text files", () => {

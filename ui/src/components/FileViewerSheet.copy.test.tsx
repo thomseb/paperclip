@@ -133,18 +133,6 @@ describe("FileViewerSheet copy actions", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
-  async function clickButtonText(label: string) {
-    const button = Array.from(document.body.querySelectorAll("button")).find(
-      (candidate) => candidate.textContent?.trim().toLowerCase() === label.toLowerCase(),
-    ) as HTMLButtonElement | undefined;
-    expect(button).toBeDefined();
-    flushSync(() => {
-      button!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    });
-    await Promise.resolve();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  }
-
   it("copies file contents and shows confirmation", async () => {
     renderSheet();
 
@@ -182,7 +170,7 @@ describe("FileViewerSheet copy actions", () => {
     expect(previewPane?.className).not.toContain("rounded");
   });
 
-  it("switches Markdown files from raw source to rendered Markdown", async () => {
+  it("defaults Markdown files to rendered mode and switches back to raw source", async () => {
     useQueryMock.mockImplementation((options: { queryKey?: readonly unknown[] }) => {
       const key = JSON.stringify(options.queryKey ?? []);
       if (key.includes('"content"')) {
@@ -206,13 +194,15 @@ describe("FileViewerSheet copy actions", () => {
     });
     renderSheet();
 
+    expect(document.body.querySelector('[aria-label="launch.md rendered Markdown"]')).not.toBeNull();
+    expect(document.body.querySelector('[aria-label="launch.md source"]')).toBeNull();
+    expect(document.body.querySelector('button[aria-label="Show rendered Markdown"]')).not.toBeNull();
+    expect(document.body.querySelector('button[aria-label="Show raw Markdown"]')).not.toBeNull();
+    expect(document.body.textContent).toContain("Rendered Markdown: # Launch note");
+
+    await click("Show raw Markdown");
+
     expect(document.body.querySelector('[aria-label="launch.md source"]')).not.toBeNull();
     expect(document.body.querySelector('[aria-label="launch.md rendered Markdown"]')).toBeNull();
-
-    await clickButtonText("Rendered");
-
-    expect(document.body.querySelector('[aria-label="launch.md source"]')).toBeNull();
-    expect(document.body.querySelector('[aria-label="launch.md rendered Markdown"]')).not.toBeNull();
-    expect(document.body.textContent).toContain("Rendered Markdown: # Launch note");
   });
 });

@@ -16,6 +16,7 @@ import {
   Check,
   Cloud,
   Copy,
+  Eye,
   FileCode2,
   FileSearch,
   FolderOpen,
@@ -259,7 +260,7 @@ type MarkdownPreviewMode = "raw" | "rendered";
 export function FileContentViewer({ content, highlightedLine, onLoaded }: FileContentViewerProps) {
   const { resource } = content;
   const isMarkdown = resource.previewKind === "text" && content.content.encoding === "utf8" && isMarkdownResource(resource);
-  const [markdownMode, setMarkdownMode] = useState<MarkdownPreviewMode>("raw");
+  const [markdownMode, setMarkdownMode] = useState<MarkdownPreviewMode>("rendered");
   const lines = useMemo(() => {
     if (resource.previewKind === "text") {
       return splitContentIntoLines(content.content.data);
@@ -271,8 +272,8 @@ export function FileContentViewer({ content, highlightedLine, onLoaded }: FileCo
   const highlightedLineRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setMarkdownMode("raw");
-  }, [resource.displayPath, resource.title, resource.contentType]);
+    setMarkdownMode(isMarkdown ? "rendered" : "raw");
+  }, [isMarkdown, resource.displayPath, resource.title, resource.contentType]);
 
   useEffect(() => {
     if (!lines) return;
@@ -393,32 +394,43 @@ export function FileContentViewer({ content, highlightedLine, onLoaded }: FileCo
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-10 shrink-0 items-center justify-between gap-2 border-b border-border bg-background/80 px-3 py-2">
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div className="absolute right-3 top-3 z-20">
         <div
           role="group"
           aria-label="Markdown preview mode"
-          className="inline-flex rounded-md border border-border bg-muted/40 p-0.5"
+          className="inline-flex rounded-md border border-border bg-background/95 p-0.5 shadow-sm backdrop-blur"
         >
-          {(["raw", "rendered"] as const).map((mode) => {
-            const selected = markdownMode === mode;
-            return (
-              <Button
-                key={mode}
-                type="button"
-                variant={selected ? "secondary" : "ghost"}
-                size="sm"
-                aria-pressed={selected}
-                onClick={() => setMarkdownMode(mode)}
-                className={cn(
-                  "h-6 rounded-sm px-2 text-xs capitalize",
-                  selected ? "shadow-none" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {mode}
-              </Button>
-            );
-          })}
+          <Button
+            type="button"
+            variant={markdownMode === "rendered" ? "secondary" : "ghost"}
+            size="icon-sm"
+            aria-label="Show rendered Markdown"
+            title="Rendered Markdown"
+            aria-pressed={markdownMode === "rendered"}
+            onClick={() => setMarkdownMode("rendered")}
+            className={cn(
+              "h-7 w-7 rounded-sm",
+              markdownMode !== "rendered" && "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Eye aria-hidden="true" className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            type="button"
+            variant={markdownMode === "raw" ? "secondary" : "ghost"}
+            size="icon-sm"
+            aria-label="Show raw Markdown"
+            title="Raw Markdown"
+            aria-pressed={markdownMode === "raw"}
+            onClick={() => setMarkdownMode("raw")}
+            className={cn(
+              "h-7 w-7 rounded-sm",
+              markdownMode !== "raw" && "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <FileCode2 aria-hidden="true" className="h-3.5 w-3.5" />
+          </Button>
         </div>
       </div>
       {markdownMode === "raw" ? (
