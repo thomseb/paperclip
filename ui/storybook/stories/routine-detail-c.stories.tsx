@@ -83,7 +83,7 @@ const routine: RoutineDetailType = {
   concurrencyPolicy: "coalesce_if_active",
   catchUpPolicy: "skip_missed",
   variables,
-  env: { DATABASE_URL: { kind: "secret", secretId: "secret-prod-db", version: "latest" } } as never,
+  env: { DATABASE_URL: { type: "secret_ref", secretId: "secret-prod-db", version: "latest" } } as never,
   latestRevisionId: "rev-17",
   latestRevisionNumber: 17,
   createdByAgentId: null,
@@ -104,9 +104,41 @@ const routine: RoutineDetailType = {
 };
 
 const routineRuns = [
-  { id: "run-1", source: "manual", status: "succeeded", triggeredAt: new Date("2026-06-09T11:48:00Z"), trigger: { label: "manual", kind: "manual" }, linkedIssue: { id: "issue-1", identifier: "PAP-99221" } },
-  { id: "run-2", source: "schedule", status: "failed", triggeredAt: new Date("2026-06-08T14:00:00Z"), trigger: { label: "schedule", kind: "schedule" }, linkedIssue: { id: "issue-2", identifier: "PAP-99220" } },
-  { id: "run-3", source: "schedule", status: "succeeded", triggeredAt: new Date("2026-06-07T14:00:00Z"), trigger: { label: "schedule", kind: "schedule" }, linkedIssue: { id: "issue-3", identifier: "PAP-99219" } },
+  { id: "run-1", source: "manual", status: "succeeded", triggeredAt: new Date("2026-06-09T11:48:00Z"), failureReason: null, triggerPayload: { customer_name: "Acme", deadline: "Fri" }, trigger: { label: "manual", kind: "manual" }, linkedIssue: { id: "issue-1", identifier: "PAP-99221", title: "Weekly digest for Acme" } },
+  { id: "run-2", source: "schedule", status: "failed", triggeredAt: new Date("2026-06-08T14:00:00Z"), failureReason: "Cron timed out after 600s", triggerPayload: { customer_name: "Acme" }, trigger: { label: "schedule", kind: "schedule" }, linkedIssue: { id: "issue-2", identifier: "PAP-99220", title: "Weekly digest for Acme" } },
+  { id: "run-3", source: "schedule", status: "succeeded", triggeredAt: new Date("2026-06-07T14:00:00Z"), failureReason: null, triggerPayload: { customer_name: "Globex" }, trigger: { label: "schedule", kind: "schedule" }, linkedIssue: { id: "issue-3", identifier: "PAP-99219", title: "Weekly digest for Globex" } },
+] as never;
+
+function stubSecret(id: string, name: string, latestVersion: number, referenceCount: number) {
+  return {
+    id,
+    companyId: COMPANY_ID,
+    key: name.toLowerCase(),
+    name,
+    provider: "paperclip",
+    status: "active",
+    managedMode: "managed",
+    externalRef: null,
+    providerConfigId: null,
+    providerMetadata: null,
+    latestVersion,
+    description: null,
+    lastResolvedAt: now,
+    lastRotatedAt: null,
+    deletedAt: null,
+    createdByAgentId: null,
+    createdByUserId: null,
+    referenceCount,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+const availableSecrets = [
+  stubSecret("secret-prod-db", "prod-db", 3, 5),
+  stubSecret("secret-gh-token", "gh-token", 2, 4),
+  stubSecret("secret-openai", "openai-key", 1, 2),
+  stubSecret("secret-stripe", "stripe-key", 1, 1),
 ] as never;
 
 const activity = [
@@ -172,7 +204,7 @@ function makeContext(dirty: boolean, navigate: (s: RoutineSectionKey) => void): 
     secretMessage: null,
     setSecretMessage: () => {},
     copySecretValue: () => {},
-    availableSecrets: [],
+    availableSecrets,
     createSecret: stubMutation(),
     agents: storybookAgents,
     projects: storybookProjects,
