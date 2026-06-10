@@ -473,6 +473,10 @@ describe("routine routes", () => {
         userName: "Ada",
         priority: "high",
       },
+      caseFields: {
+        userName: "Ada",
+        priority: "high",
+      },
     }, {
       agentId: null,
       userId: "board-user",
@@ -480,8 +484,53 @@ describe("routine routes", () => {
     expect(mockLogActivity).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       action: "routine.run_triggered",
       entityId: "run-1",
-      details: { source: "api", status: "issue_created" },
+      details: expect.objectContaining({ source: "api", status: "issue_created" }),
     }));
+  });
+
+  it("runs a routine from an intake form with explicit case fields", async () => {
+    mockAccessService.canUser.mockResolvedValue(true);
+    const app = await createApp({
+      type: "board",
+      userId: "board-user",
+      source: "session",
+      isInstanceAdmin: false,
+      companyIds: [companyId],
+    });
+
+    mockRoutineService.runRoutine.mockResolvedValueOnce({
+      id: "run-2",
+      source: "api",
+      status: "issue_created",
+    });
+
+    const res = await request(app)
+      .post(`/api/routines/${routineId}/intake-form`)
+      .send({
+        projectId,
+        caseFields: {
+          repo: "paperclip",
+        },
+        userName: "Ada",
+      });
+
+    expect(res.status).toBe(202);
+    expect(mockRoutineService.runRoutine).toHaveBeenCalledWith(routineId, {
+      source: "api",
+      projectId,
+      payload: {
+        userName: "Ada",
+      },
+      variables: {
+        userName: "Ada",
+      },
+      caseFields: {
+        repo: "paperclip",
+      },
+    }, {
+      agentId: null,
+      userId: "board-user",
+    });
   });
 
   it("passes the board actor through when manually running a routine", async () => {

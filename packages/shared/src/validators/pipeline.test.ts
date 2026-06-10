@@ -5,13 +5,13 @@ describe("pipeline stage variable schema", () => {
   it("validates select variables require options", () => {
     expect(
       pipelineStageConfigSchema.safeParse({
-        variables: [{ key: "status", type: "select", options: ["open", "done"] }],
+        variables: [{ key: "status", label: "Status", type: "select", options: ["open", "done"] }],
       }).success,
     ).toBe(true);
 
     expect(
       pipelineStageConfigSchema.safeParse({
-        variables: [{ key: "status", type: "select", options: [] }],
+        variables: [{ key: "status", label: "Status", type: "select", options: [] }],
       }).success,
     ).toBe(false);
   });
@@ -20,8 +20,8 @@ describe("pipeline stage variable schema", () => {
     expect(
       pipelineStageConfigSchema.safeParse({
         variables: [
-          { key: "repo", type: "text" },
-          { key: "repo", type: "text" },
+          { key: "repo", label: "Repo", type: "text" },
+          { key: "repo", label: "Repo", type: "text" },
         ],
       }).success,
     ).toBe(false);

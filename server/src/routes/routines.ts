@@ -36,6 +36,7 @@ export function routineRoutes(
     "executionWorkspaceId",
     "executionWorkspacePreference",
     "executionWorkspaceSettings",
+    "caseFields",
     "source",
   ]);
 
@@ -366,11 +367,15 @@ export function routineRoutes(
     const runPayload = "payload" in control
       ? control.payload as Record<string, unknown> | null
       : payload;
+    const caseFields = Object.hasOwn(control, "caseFields")
+      ? (control.caseFields as Record<string, unknown> | null)
+      : payload;
     const run = await svc.runRoutine(routine.id, {
       ...control,
       source: "api",
       payload: runPayload,
       variables: payload,
+      caseFields,
     }, {
       agentId: req.actor.type === "agent" ? req.actor.agentId : null,
       userId: req.actor.type === "board" ? req.actor.userId ?? null : null,
