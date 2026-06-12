@@ -16,6 +16,7 @@ import {
   pipelineStages,
   pipelineTransitions,
   pipelines,
+  routines,
 } from "@paperclipai/db";
 import { validate } from "../middleware/validate.js";
 import { badRequest, conflict, forbidden, HttpError, notFound, unauthorized, unprocessable } from "../errors.js";
@@ -178,6 +179,36 @@ const upsertPipelineDocumentSchema = z.object({
   baseRevisionId: z.string().uuid().nullable().optional(),
 });
 const intakeFieldTypes = new Set(["select", "text", "multiline"]);
+
+function stageAutomationRoutineId(config: unknown) {
+  if (!config || typeof config !== "object" || Array.isArray(config)) return null;
+  const onEnter = (config as { onEnter?: unknown }).onEnter;
+  if (!onEnter || typeof onEnter !== "object" || Array.isArray(onEnter)) return null;
+  const record = onEnter as Record<string, unknown>;
+  return record.type === "run_routine" && typeof record.routineId === "string" ? record.routineId : null;
+}
+
+function withDerivedStageAutomation(
+  stage: typeof pipelineStages.$inferSelect,
+  routineById: Map<string, { assigneeAgentId: string | null; description: string | null }>,
+) {
+  const config = stage.config && typeof stage.config === "object" && !Array.isArray(stage.config)
+    ? { ...(stage.config as Record<string, unknown>) }
+    : {};
+  const routineId = stageAutomationRoutineId(config);
+  const routine = routineId ? routineById.get(routineId) : null;
+  if (!routine) return { ...stage, config };
+  return {
+    ...stage,
+    config: {
+      ...config,
+      automation: {
+        assigneeAgentId: routine.assigneeAgentId,
+        instructionsBody: routine.description ?? "",
+      },
+    },
+  };
+}
 
 function extractIntakeFormFields(stage: typeof pipelineStages.$inferSelect | null) {
   const baseFields = [{ key: "title", label: "Name", type: "text", required: true, options: [] as string[] }];
@@ -665,7 +696,21 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
         .where(and(eq(pipelineDocuments.companyId, companyId), eq(pipelineDocuments.pipelineId, pipelineId))),
     ]);
     if (!pipeline) throw notFound("Pipeline not found");
-    res.json({ ...pipeline, stages, transitions, documentKeys });
+    const automationRoutineIds = stages.flatMap((stage) => {
+      const routineId = stageAutomationRoutineId(stage.config);
+      return routineId ? [routineId] : [];
+    });
+    const routineRows = automationRoutineIds.length > 0
+      ? await db
+          .select({ id: routines.id, assigneeAgentId: routines.assigneeAgentId, description: routines.description })
+          .from(routines)
+          .where(and(eq(routines.companyId, companyId), inArray(routines.id, automationRoutineIds)))
+      : [];
+    const routineById = new Map(routineRows.map((row) => [
+      row.id,
+      { assigneeAgentId: row.assigneeAgentId, description: row.description },
+    ]));
+    res.json({ ...pipeline, stages: stages.map((stage) => withDerivedStageAutomation(stage, routineById)), transitions, documentKeys });
   });
 
   // Setup-health warnings: surface any configuration that won't actually run
@@ -721,6 +766,21 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     ]);
     if (!pipeline) throw notFound("Pipeline not found");
 
+    const automationRoutineIds = stages.flatMap((stage) => {
+      const routineId = stageAutomationRoutineId(stage.config);
+      return routineId ? [routineId] : [];
+    });
+    const routineRows = automationRoutineIds.length > 0
+      ? await db
+          .select({ id: routines.id, assigneeAgentId: routines.assigneeAgentId, description: routines.description })
+          .from(routines)
+          .where(and(eq(routines.companyId, companyId), inArray(routines.id, automationRoutineIds)))
+      : [];
+    const routineById = new Map(routineRows.map((row) => [
+      row.id,
+      { assigneeAgentId: row.assigneeAgentId, description: row.description },
+    ]));
+
     const bodyByStageId = new Map<string, string>();
     for (const doc of instructionDocs) {
       if (!doc.key.startsWith(STAGE_INSTRUCTIONS_PREFIX)) continue;
@@ -741,14 +801,18 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       pipelinesById[p.id] = { id: p.id, name: p.name, stages: stagesByPipelineId.get(p.id) ?? [] };
     }
 
-    const healthStages: PipelineHealthStageInput[] = stages.map((stage) => ({
-      id: stage.id,
-      key: stage.key,
-      name: stage.name,
-      kind: stage.kind,
-      config: (stage.config ?? null) as Record<string, unknown> | null,
-      instructionsBody: bodyByStageId.get(stage.id) ?? "",
-    }));
+    const healthStages: PipelineHealthStageInput[] = stages.map((stage) => {
+      const stageWithAutomation = withDerivedStageAutomation(stage, routineById);
+      const automation = (stageWithAutomation.config as { automation?: { instructionsBody?: string | null } }).automation;
+      return {
+        id: stage.id,
+        key: stage.key,
+        name: stage.name,
+        kind: stage.kind,
+        config: (stageWithAutomation.config ?? null) as Record<string, unknown> | null,
+        instructionsBody: automation?.instructionsBody ?? bodyByStageId.get(stage.id) ?? "",
+      };
+    });
     const failedAutomations: PipelineHealthFailedAutomationInput[] = failedAutomationRows.map((row) => ({
       stageId: row.stageId,
       stageKey: row.stageKey,

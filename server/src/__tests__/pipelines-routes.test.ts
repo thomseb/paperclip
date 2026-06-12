@@ -22,6 +22,7 @@ import {
   pipelineStages,
   pipelineTransitions,
   pipelines,
+  routineRevisions,
   routineRuns,
   routines,
 } from "@paperclipai/db";
@@ -70,6 +71,7 @@ describeEmbeddedPostgres("pipeline routes", () => {
     await db.delete(documents);
     await db.delete(issueComments);
     await db.delete(routineRuns);
+    await db.delete(routineRevisions);
     await db.delete(heartbeatRuns);
     await db.delete(issues);
     await db.delete(pipelines);
@@ -601,6 +603,101 @@ describeEmbeddedPostgres("pipeline routes", () => {
       expect.objectContaining({ action: "routine.origin_stamped", entityId: routine!.id }),
       expect.objectContaining({ action: "routine.origin_cleared", entityId: routine!.id }),
     ]));
+  });
+
+  it("materializes, syncs, and unwires stage automation routines from stage settings", async () => {
+    const company = await seedCompany();
+    const [firstAgent, secondAgent] = await db.insert(agents).values([
+      { companyId: company.id, name: "Draft Agent", role: "writer", status: "idle" },
+      { companyId: company.id, name: "QA Agent", role: "reviewer", status: "idle" },
+    ]).returning();
+    const http = request(app(boardActor));
+    const pipeline = await http.post(`/api/companies/${company.id}/pipelines`).send({ key: "automation", name: "Automation" }).expect(201);
+    const stage = pipeline.body.stages.find((item: { key: string }) => item.key === "in_progress");
+
+    const created = await http
+      .patch(`/api/pipelines/${pipeline.body.id}/stages/${stage.id}`)
+      .send({
+        config: {
+          assigneeAgentId: firstAgent!.id,
+          automation: {
+            assigneeAgentId: firstAgent!.id,
+            instructionsBody: "Draft the item.",
+          },
+        },
+      })
+      .expect(200);
+
+    expect(created.body.config).toMatchObject({
+      onEnter: { type: "run_routine", routineId: expect.any(String) },
+    });
+    expect(created.body.config).not.toHaveProperty("automation");
+    expect(created.body.config).not.toHaveProperty("assigneeAgentId");
+    const routineId = created.body.config.onEnter.routineId;
+
+    let [routine] = await db.select().from(routines).where(eq(routines.id, routineId));
+    expect(routine).toMatchObject({
+      companyId: company.id,
+      assigneeAgentId: firstAgent!.id,
+      description: "Draft the item.",
+      originKind: "pipeline_automation",
+      originId: pipeline.body.id,
+      latestRevisionNumber: 1,
+    });
+    let [revision] = await db.select().from(routineRevisions).where(eq(routineRevisions.routineId, routineId));
+    expect(revision!.snapshot).toMatchObject({
+      routine: {
+        assigneeAgentId: firstAgent!.id,
+        description: "Draft the item.",
+      },
+    });
+
+    const detail = await http.get(`/api/pipelines/${pipeline.body.id}`).expect(200);
+    const detailStage = detail.body.stages.find((item: { id: string }) => item.id === stage.id);
+    expect(detailStage.config.automation).toEqual({
+      assigneeAgentId: firstAgent!.id,
+      instructionsBody: "Draft the item.",
+    });
+
+    const synced = await http
+      .patch(`/api/pipelines/${pipeline.body.id}/stages/${stage.id}`)
+      .send({
+        config: {
+          ...detailStage.config,
+          automation: {
+            assigneeAgentId: secondAgent!.id,
+            instructionsBody: "Review the item.",
+          },
+        },
+      })
+      .expect(200);
+    expect(synced.body.config.onEnter.routineId).toBe(routineId);
+    [routine] = await db.select().from(routines).where(eq(routines.id, routineId));
+    expect(routine).toMatchObject({
+      assigneeAgentId: secondAgent!.id,
+      description: "Review the item.",
+      latestRevisionNumber: 2,
+    });
+
+    const unwired = await http
+      .patch(`/api/pipelines/${pipeline.body.id}/stages/${stage.id}`)
+      .send({
+        config: {
+          ...synced.body.config,
+          automation: {
+            assigneeAgentId: null,
+            instructionsBody: "Review the item.",
+          },
+        },
+      })
+      .expect(200);
+    expect(unwired.body.config).not.toHaveProperty("onEnter");
+    expect(unwired.body.config).not.toHaveProperty("automation");
+    [routine] = await db.select().from(routines).where(eq(routines.id, routineId));
+    expect(routine).toMatchObject({
+      originKind: "manual",
+      originId: null,
+    });
   });
 
   it("writes an audit event when an agent removes a case issue link", async () => {

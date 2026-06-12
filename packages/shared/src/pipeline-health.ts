@@ -95,6 +95,7 @@ export interface PipelineHealthInput {
 
 type StageConfig = {
   assigneeAgentId?: unknown;
+  automation?: unknown;
   requireApproval?: unknown;
   approver?: { kind?: unknown; id?: unknown } | null;
   variables?: unknown;
@@ -117,6 +118,17 @@ function hasRunnableStageAutomation(config: StageConfig): boolean {
   if (!onEnter || typeof onEnter !== "object" || Array.isArray(onEnter)) return false;
   const record = onEnter as Record<string, unknown>;
   return record.type === "run_routine" && typeof record.routineId === "string" && record.routineId.trim().length > 0;
+}
+
+function automationAssigneeAgentId(config: StageConfig): string | null {
+  const automation = config.automation;
+  if (automation && typeof automation === "object" && !Array.isArray(automation)) {
+    const value = (automation as Record<string, unknown>).assigneeAgentId;
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return typeof config.assigneeAgentId === "string" && config.assigneeAgentId.trim()
+    ? config.assigneeAgentId.trim()
+    : null;
 }
 
 function readVariableName(entry: Record<string, unknown>): string | null {
@@ -150,10 +162,7 @@ export function computePipelineHealth(input: PipelineHealthInput): PipelineHealt
     const instructionsBody = (stage.instructionsBody ?? "").trim();
     const anchor = { stageId: stage.id, stageKey: stage.key, stageName: stage.name };
 
-    const assigneeAgentId =
-      typeof config.assigneeAgentId === "string" && config.assigneeAgentId.trim()
-        ? config.assigneeAgentId.trim()
-        : null;
+    const assigneeAgentId = automationAssigneeAgentId(config);
     const hasStageAutomation = hasRunnableStageAutomation(config);
 
     // 1. A teammate is assigned to run this step, but they're paused / gone.

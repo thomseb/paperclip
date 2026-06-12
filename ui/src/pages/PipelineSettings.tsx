@@ -16,7 +16,6 @@ import {
   Pause,
   Play,
   Plus,
-  RefreshCw,
   Save,
 } from "lucide-react";
 import { agentsApi } from "../api/agents";
@@ -72,7 +71,10 @@ type StageConfig = {
   variables?: unknown[];
   disabled?: boolean;
   disabledReason?: string | null;
-  assigneeAgentId?: string | null;
+  automation?: {
+    assigneeAgentId?: string | null;
+    instructionsBody?: string | null;
+  };
   requireApproval?: boolean;
   approver?: {
     kind?: ApproverKind;
@@ -100,7 +102,7 @@ const STAGE_NAV_GROUPS: Array<{
     label: "Stage",
     items: [
       { id: "overview", label: "Overview", icon: Circle },
-      { id: "instructions", label: "Instructions", icon: LayoutGrid },
+      { id: "instructions", label: "Automation", icon: LayoutGrid },
       { id: "secrets", label: "Secrets", icon: KeyRound },
     ],
   },
@@ -116,7 +118,7 @@ const STAGE_NAV_GROUPS: Array<{
 
 const STAGE_SECTION_TITLES: Record<StageSectionKey, string> = {
   overview: "Overview",
-  instructions: "Instructions",
+  instructions: "Automation",
   secrets: "Secrets",
   runs: "Runs",
   activity: "Activity",
@@ -128,14 +130,6 @@ const PIPELINE_GUIDANCE_KEY = "guidance";
 /** Per-stage instructions document key — keyed by stage id so it survives renames. */
 function stageInstructionsKey(stageId: string) {
   return `stage-instructions:${stageId}`;
-}
-
-/** Raised when the instructions document upsert is rejected for a stale base revision. */
-class StageInstructionsConflictError extends Error {
-  constructor() {
-    super("Stage instructions were updated by someone else.");
-    this.name = "StageInstructionsConflictError";
-  }
 }
 
 const ROUTINE_VARIABLE_TYPES: ReadonlySet<RoutineVariable["type"]> = new Set([
@@ -197,6 +191,17 @@ function stageConfig(stage: PipelineStage | null | undefined): StageConfig {
   return config as StageConfig;
 }
 
+function stageAutomation(stage: PipelineStage | null | undefined) {
+  const automation = stageConfig(stage).automation;
+  if (!automation || typeof automation !== "object" || Array.isArray(automation)) {
+    return { assigneeAgentId: "", instructionsBody: null as string | null };
+  }
+  return {
+    assigneeAgentId: typeof automation.assigneeAgentId === "string" ? automation.assigneeAgentId : "",
+    instructionsBody: typeof automation.instructionsBody === "string" ? automation.instructionsBody : null,
+  };
+}
+
 function stageNewEntriesDisabled(stage: PipelineStage | null | undefined) {
   return stageConfig(stage).disabled === true;
 }
@@ -232,12 +237,13 @@ function computeStageForm(
   transitions: PipelineTransitionRecord[],
 ): StageFormValues {
   const config = stageConfig(stage);
+  const automation = stageAutomation(stage);
   return {
     name: stage.name,
     kind: stage.kind,
     newEntriesDisabled: stageNewEntriesDisabled(stage),
     disableReason: config.disabledReason ?? "",
-    assigneeAgentId: typeof config.assigneeAgentId === "string" ? config.assigneeAgentId : "",
+    assigneeAgentId: automation.assigneeAgentId,
     approvalRequired: Boolean(config.requireApproval),
     approval: approvalValue(config),
     approveTarget: config.approveToStageKey ?? "",
@@ -460,7 +466,6 @@ export function PipelineSettings() {
   const [selectedApproval, setSelectedApproval] = useState("any_human");
   const [instructionsBody, setInstructionsBody] = useState("");
   const [instructionsVariables, setInstructionsVariables] = useState<RoutineVariable[]>([]);
-  const [instructionsConflict, setInstructionsConflict] = useState(false);
   const [approveTarget, setApproveTarget] = useState("");
   const [rejectTarget, setRejectTarget] = useState("");
   const [requestChangesTarget, setRequestChangesTarget] = useState("");
@@ -535,14 +540,11 @@ export function PipelineSettings() {
     enabled: !!pipelineId && !!instructionsKey && !!selectedCompanyId,
   });
   const instructionsDocument = instructionsQuery.data ?? null;
-  // Read-through back-compat: when no per-stage document exists yet, seed the
-  // editor from the legacy `config.whatHappensHere`; the first save writes the
-  // document and the document becomes the source of truth thereafter.
+  // Routine-backed automation is the source of truth. Per-stage documents and
+  // the legacy field remain as read-through fallbacks for older stages.
   const savedInstructionsBody = instructionsDocument
-    ? instructionsDocument.revision?.body ?? instructionsDocument.document?.latestBody ?? ""
-    : stageConfig(selectedStage).whatHappensHere ?? "";
-  const instructionsBaseRevisionId =
-    (instructionsDocument?.document?.latestRevisionId as string | null | undefined) ?? null;
+    ? stageAutomation(selectedStage).instructionsBody ?? instructionsDocument.revision?.body ?? instructionsDocument.document?.latestBody ?? ""
+    : stageAutomation(selectedStage).instructionsBody ?? stageConfig(selectedStage).whatHappensHere ?? "";
   const savedInstructionsVariables = useMemo(
     () => savedStageVariables(selectedStage, savedInstructionsBody),
     [selectedStage, savedInstructionsBody],
@@ -664,7 +666,6 @@ export function PipelineSettings() {
   useEffect(() => {
     setInstructionsBody(savedInstructionsBody);
     setInstructionsVariables(savedInstructionsVariables);
-    setInstructionsConflict(false);
   }, [selectedStage?.id, savedInstructionsBody, savedInstructionsVariables]);
 
   useEffect(() => {
@@ -694,14 +695,14 @@ export function PipelineSettings() {
         variables: instructionsVariables,
         disabled: newEntriesDisabled,
         disabledReason: newEntriesDisabled ? disableReason.trim() || null : null,
-        assigneeAgentId: stageAssigneeAgentId || null,
+        automation: {
+          assigneeAgentId: stageAssigneeAgentId || null,
+          instructionsBody,
+        },
         requireApproval: nextRequiresApproval,
         approver: nextRequiresApproval && parsedApproval.kind !== "any_human"
           ? { kind: parsedApproval.kind, id: parsedApproval.id }
           : { kind: "any_human" },
-        // Mirror the body into the legacy field so read-through stays consistent
-        // for any caller still reading `config.whatHappensHere`.
-        whatHappensHere: instructionsBody.trim(),
       };
       // The approval model replaces the legacy reviewerKind input.
       delete config.reviewerKind;
@@ -752,25 +753,6 @@ export function PipelineSettings() {
         return [{ fromStageKey: selectedStage.key, toStageKey, label: prior?.label ?? null }];
       });
 
-      // Persist the instructions body first so a stale-revision conflict aborts
-      // before we mutate the rest of the stage config (no half-applied save).
-      const bodyChanged = instructionsBody !== savedInstructionsBody;
-      const needsFirstWrite = !instructionsDocument && instructionsBody.trim().length > 0;
-      if (bodyChanged || needsFirstWrite) {
-        try {
-          await pipelinesApi.upsertDocument(pipelineId, stageInstructionsKey(selectedStage.id), {
-            title: `${stageName.trim() || selectedStage.name} instructions`,
-            body: instructionsBody,
-            baseRevisionId: instructionsBaseRevisionId,
-          });
-        } catch (error) {
-          if (error instanceof ApiError && error.status === 409) {
-            throw new StageInstructionsConflictError();
-          }
-          throw error;
-        }
-      }
-
       await pipelinesApi.updateStage(pipelineId, selectedStage.id, {
         name: stageName.trim(),
         kind: stageKind,
@@ -782,7 +764,6 @@ export function PipelineSettings() {
       return null;
     },
     onSuccess: async () => {
-      setInstructionsConflict(false);
       if (pipelineId && instructionsKey) {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: queryKeys.pipelines.document(pipelineId, instructionsKey) }),
@@ -793,18 +774,6 @@ export function PipelineSettings() {
       pushToast({ title: "Stage saved", tone: "success" });
     },
     onError: async (error) => {
-      if (error instanceof StageInstructionsConflictError) {
-        setInstructionsConflict(true);
-        if (pipelineId && instructionsKey) {
-          await queryClient.invalidateQueries({ queryKey: queryKeys.pipelines.document(pipelineId, instructionsKey) });
-        }
-        pushToast({
-          title: "Instructions changed",
-          body: "Someone else updated these instructions. Reload to see the latest version.",
-          tone: "warn",
-        });
-        return;
-      }
       pushToast({
         title: "Failed to save stage",
         body: error instanceof Error ? error.message : "Paperclip could not save the stage.",
@@ -812,12 +781,6 @@ export function PipelineSettings() {
       });
     },
   });
-
-  const reloadInstructions = async () => {
-    if (!pipelineId || !instructionsKey) return;
-    setInstructionsConflict(false);
-    await queryClient.invalidateQueries({ queryKey: queryKeys.pipelines.document(pipelineId, instructionsKey) });
-  };
 
   const addStage = useMutation({
     mutationFn: async (afterStage: PipelineStage | null) => {
@@ -972,6 +935,7 @@ export function PipelineSettings() {
   const variablesDirty =
     selectedStage != null &&
     JSON.stringify(instructionsVariables) !== JSON.stringify(savedInstructionsVariables);
+  const selectedAutomationAgent = stageAssigneeAgentId ? agentById.get(stageAssigneeAgentId) ?? null : null;
   const stageDirty =
     (savedStageForm != null &&
       currentStageForm != null &&
@@ -1318,18 +1282,18 @@ export function PipelineSettings() {
                     <div className="w-full max-w-3xl space-y-6">
                       <div className="overflow-x-auto overscroll-x-contain">
                         <div className="inline-flex min-w-full flex-wrap items-center gap-2 text-sm text-muted-foreground sm:min-w-max sm:flex-nowrap">
-                          <span>For</span>
+                          <span>When an item enters this step</span>
                           <InlineEntitySelector
                             value={stageAssigneeOptionId(stageAssigneeAgentId)}
                             options={stageAssigneeOptions}
                             recentOptionIds={recentAssigneeOptionIds}
-                            placeholder="Assignee"
-                            noneLabel="No assignee"
-                            searchPlaceholder="Search assignees..."
-                            emptyMessage="No assignees found."
+                            placeholder="Pick agent"
+                            noneLabel="No automation"
+                            searchPlaceholder="Search agents..."
+                            emptyMessage="No agents found."
                             onChange={(value) => setStageAssigneeAgentId(stageAssigneeIdFromOption(value))}
                             renderTriggerValue={(option) => {
-                              if (!option) return <span className="text-muted-foreground">Assignee</span>;
+                              if (!option) return <span className="text-muted-foreground">Pick agent</span>;
                               const agent = stageAssigneeIdFromOption(option.id)
                                 ? agentById.get(stageAssigneeIdFromOption(option.id))
                                 : null;
@@ -1352,33 +1316,39 @@ export function PipelineSettings() {
                               );
                             }}
                           />
+                          <span>runs these instructions, then moves the item to the next step.</span>
                         </div>
                       </div>
 
-                      <div data-testid="stage-instructions-editor">
-                        <MarkdownEditor
-                          value={instructionsBody}
-                          onChange={setInstructionsBody}
-                          placeholder="Add instructions..."
-                          bordered={false}
-                          contentClassName="min-h-[120px] text-[15px] leading-7"
-                          mentions={mentionOptions}
-                          onSubmit={() => {
-                            if (!saveStage.isPending && stageName.trim() && !reviewTargetsMissing) {
-                              saveStage.mutate();
-                            }
-                          }}
-                        />
-                      </div>
-                        {instructionsConflict ? (
-                          <div className="flex flex-col gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-900 dark:text-amber-200 sm:flex-row sm:items-center sm:justify-between">
-                            <span>Someone else updated these instructions. Reload to get their version, then re-apply your edits.</span>
-                            <Button type="button" variant="outline" size="sm" onClick={reloadInstructions}>
-                              <RefreshCw className="h-3.5 w-3.5" />
-                              Reload latest
-                            </Button>
+                      {selectedAutomationAgent ? (
+                        <>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <AgentIcon icon={selectedAutomationAgent.icon} className="h-4 w-4 shrink-0" />
+                            <span>{selectedAutomationAgent.name} runs this step automatically.</span>
                           </div>
-                        ) : null}
+                          <div data-testid="stage-instructions-editor">
+                            <MarkdownEditor
+                              value={instructionsBody}
+                              onChange={setInstructionsBody}
+                              placeholder="Tell the agent exactly what to do when an item enters this step..."
+                              bordered={false}
+                              contentClassName="min-h-[120px] text-[15px] leading-7"
+                              mentions={mentionOptions}
+                              onSubmit={() => {
+                                if (!saveStage.isPending && stageName.trim() && !reviewTargetsMissing) {
+                                  saveStage.mutate();
+                                }
+                              }}
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <EmptyState
+                          icon={Pause}
+                          message="Nothing runs here automatically. Items wait until a person moves them, or you can pick an agent to run this step."
+                        />
+                      )}
+                      {selectedAutomationAgent ? (
                         <div className="space-y-3">
                           <RoutineVariablesHint />
                           <RoutineVariablesEditor
@@ -1388,6 +1358,7 @@ export function PipelineSettings() {
                             onChange={setInstructionsVariables}
                           />
                         </div>
+                      ) : null}
                     </div>
                   ) : null}
 
@@ -1431,11 +1402,10 @@ export function PipelineSettings() {
                         <PipelineStageHistoryPanel
                           pipelineId={pipelineId}
                           documentKey={instructionsKey}
-                          currentRevisionId={instructionsBaseRevisionId}
+                          currentRevisionId={(instructionsDocument?.document?.latestRevisionId as string | null | undefined) ?? null}
                           hasDocument={Boolean(instructionsDocument)}
                           onRestored={(body, baseRevisionId) => {
                             setInstructionsBody(body);
-                            setInstructionsConflict(false);
                             void baseRevisionId;
                           }}
                         />

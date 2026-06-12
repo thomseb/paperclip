@@ -15,12 +15,15 @@ import {
   pipelineStages,
   pipelineTransitions,
   pipelines,
+  routineRevisions,
   routines,
 } from "@paperclipai/db";
+import { syncRoutineVariablesWithTemplate, type RoutineVariable, type RoutineRevisionSnapshotV1 } from "@paperclipai/shared";
 import { conflict, HttpError, notFound, unprocessable } from "../errors.js";
 import { routineService } from "./routines.js";
 import type { IssueAssignmentWakeupDeps } from "./issue-assignment-wakeup.js";
 import { logActivity } from "./activity-log.js";
+import { assertAssignableAgent } from "./agent-assignability.js";
 
 const DEFAULT_LEASE_MS = 15 * 60 * 1000;
 const MAX_LEASE_MS = 24 * 60 * 60 * 1000;
@@ -75,13 +78,19 @@ export type PipelineStageConfig = Record<string, unknown> & {
   };
   reviewerKind?: "human" | "any";
   variables?: Array<{
+    name?: unknown;
     key?: unknown;
     label?: unknown;
     type?: unknown;
+    defaultValue?: unknown;
     options?: unknown;
     required?: unknown;
     showInAddForm?: unknown;
   }>;
+  automation?: {
+    assigneeAgentId?: string | null;
+    instructionsBody?: string | null;
+  };
   onEnter?: {
     type?: "run_routine";
     routineId?: string;
@@ -100,6 +109,17 @@ type PipelineDb = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 function nowDate() {
   return new Date();
+}
+
+function routineActorPatch(actor: PipelineActor) {
+  if (actor.type === "agent") {
+    assertActorProvenance(actor);
+    return { agentId: actor.agentId, userId: null, runId: actor.runId };
+  }
+  if (actor.type === "user") {
+    return { agentId: null, userId: actor.userId, runId: null };
+  }
+  return { agentId: null, userId: null, runId: null };
 }
 
 function eventActorPatch(actor: PipelineActor) {
@@ -191,8 +211,61 @@ function stageConfig(stage: typeof pipelineStages.$inferSelect): PipelineStageCo
   return (stage.config ?? {}) as PipelineStageConfig;
 }
 
+function readStageAutomationRequest(config?: PipelineStageConfig | null) {
+  const automation = config?.automation;
+  if (!automation || typeof automation !== "object" || Array.isArray(automation)) return null;
+  const assigneeAgentId =
+    typeof automation.assigneeAgentId === "string" && automation.assigneeAgentId.trim()
+      ? automation.assigneeAgentId.trim()
+      : null;
+  const instructionsBody =
+    typeof automation.instructionsBody === "string" ? automation.instructionsBody : "";
+  return { assigneeAgentId, instructionsBody };
+}
+
+function persistedStageConfig(config?: PipelineStageConfig | null): PipelineStageConfig {
+  const {
+    automation: _automation,
+    assigneeAgentId: _assigneeAgentId,
+    ...rest
+  } = { ...(config ?? {}) } as PipelineStageConfig & { assigneeAgentId?: unknown };
+  return rest as PipelineStageConfig;
+}
+
+function sanitizePipelineRoutineVariables(raw: PipelineStageConfig["variables"]): RoutineVariable[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((variable) => {
+    if (!variable || typeof variable !== "object" || Array.isArray(variable)) return [];
+    const name = typeof variable.name === "string" && variable.name.trim()
+      ? variable.name.trim()
+      : typeof variable.key === "string" && variable.key.trim()
+        ? variable.key.trim()
+        : null;
+    if (!name || !/^[A-Za-z][A-Za-z0-9_]*$/.test(name)) return [];
+    const type = variable.type === "textarea" || variable.type === "number" || variable.type === "boolean" || variable.type === "select"
+      ? variable.type
+      : "text";
+    const defaultValue =
+      typeof variable.defaultValue === "string" ||
+      typeof variable.defaultValue === "number" ||
+      typeof variable.defaultValue === "boolean"
+        ? variable.defaultValue
+        : null;
+    return [{
+      name,
+      label: typeof variable.label === "string" && variable.label.trim() ? variable.label.trim() : null,
+      type,
+      defaultValue,
+      required: variable.required === true,
+      options: Array.isArray(variable.options)
+        ? variable.options.filter((option): option is string => typeof option === "string")
+        : [],
+    }];
+  });
+}
+
 function normalizeStageConfig(kind: PipelineStageKind | string, config?: PipelineStageConfig | null): PipelineStageConfig {
-  const { reviewerKind, ...rest } = { ...(config ?? {}) };
+  const { reviewerKind, ...rest } = persistedStageConfig(config);
   const next = rest as PipelineStageConfig;
 
   if (next.disabled !== undefined && typeof next.disabled !== "boolean") {
@@ -348,6 +421,27 @@ function stageAutomationRoutineIdFromConfig(config?: PipelineStageConfig | null)
   return onEnter?.type === "run_routine" && typeof onEnter.routineId === "string"
     ? onEnter.routineId
     : null;
+}
+
+function routineRevisionSnapshotRoutine(routine: typeof routines.$inferSelect): RoutineRevisionSnapshotV1["routine"] {
+  return {
+    id: routine.id,
+    companyId: routine.companyId,
+    projectId: routine.projectId,
+    goalId: routine.goalId,
+    parentIssueId: routine.parentIssueId,
+    title: routine.title,
+    description: routine.description,
+    assigneeAgentId: routine.assigneeAgentId,
+    priority: routine.priority as RoutineRevisionSnapshotV1["routine"]["priority"],
+    status: routine.status as RoutineRevisionSnapshotV1["routine"]["status"],
+    concurrencyPolicy: routine.concurrencyPolicy as RoutineRevisionSnapshotV1["routine"]["concurrencyPolicy"],
+    catchUpPolicy: routine.catchUpPolicy as RoutineRevisionSnapshotV1["routine"]["catchUpPolicy"],
+    originKind: routine.originKind,
+    originId: routine.originId,
+    variables: routine.variables ?? [],
+    env: routine.env ?? null,
+  };
 }
 
 function addFormVariablesForStage(stage: typeof pipelineStages.$inferSelect) {
@@ -1179,6 +1273,148 @@ export function pipelineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeu
     await assertRoutineInCompany(companyId, onEnter.routineId);
   }
 
+  async function appendPipelineAutomationRoutineRevision(
+    dbOrTx: PipelineDb,
+    routine: typeof routines.$inferSelect,
+    actor: PipelineActor,
+    changeSummary: string,
+  ) {
+    const actorPatch = routineActorPatch(actor);
+    const revisionNumber = routine.latestRevisionId ? routine.latestRevisionNumber + 1 : 1;
+    const [revision] = await dbOrTx
+      .insert(routineRevisions)
+      .values({
+        companyId: routine.companyId,
+        routineId: routine.id,
+        revisionNumber,
+        title: routine.title,
+        description: routine.description,
+        snapshot: {
+          version: 1,
+          routine: routineRevisionSnapshotRoutine(routine),
+          triggers: [],
+        },
+        changeSummary,
+        createdByAgentId: actorPatch.agentId,
+        createdByUserId: actorPatch.userId,
+        createdByRunId: actorPatch.runId,
+      })
+      .returning();
+    const [updated] = await dbOrTx
+      .update(routines)
+      .set({
+        latestRevisionId: revision!.id,
+        latestRevisionNumber: revisionNumber,
+        updatedAt: nowDate(),
+      })
+      .where(eq(routines.id, routine.id))
+      .returning();
+    return updated ?? routine;
+  }
+
+  async function syncPipelineStageAutomation(
+    dbOrTx: PipelineDb,
+    input: {
+      companyId: string;
+      pipelineId: string;
+      stage: typeof pipelineStages.$inferSelect;
+      config: PipelineStageConfig;
+      assigneeAgentId: string | null;
+      instructionsBody: string;
+      actor: PipelineActor;
+    },
+  ): Promise<PipelineStageConfig> {
+    const previousRoutineId = stageAutomationRoutineIdFromConfig(input.config);
+    if (!input.assigneeAgentId) {
+      const { onEnter: _onEnter, ...rest } = input.config;
+      return rest as PipelineStageConfig;
+    }
+
+    await assertAssignableAgent(dbOrTx as Db, input.companyId, input.assigneeAgentId, { kind: "routine" });
+    const actorPatch = routineActorPatch(input.actor);
+    const variables = syncRoutineVariablesWithTemplate(
+      [input.stage.name, input.instructionsBody],
+      sanitizePipelineRoutineVariables(input.config.variables),
+    );
+    const title = `${input.stage.name} automation`;
+    const description = input.instructionsBody.trim();
+
+    const previousRoutine = previousRoutineId
+      ? await dbOrTx
+          .select()
+          .from(routines)
+          .where(and(eq(routines.id, previousRoutineId), eq(routines.companyId, input.companyId)))
+          .then((rows) => rows[0] ?? null)
+      : null;
+    const canReusePrevious =
+      previousRoutine &&
+      (previousRoutine.originKind === "pipeline_automation" || previousRoutine.originKind === "manual");
+
+    if (canReusePrevious) {
+      const now = nowDate();
+      const [routine] = await dbOrTx
+        .update(routines)
+        .set({
+          title,
+          description,
+          assigneeAgentId: input.assigneeAgentId,
+          status: "active",
+          originKind: "pipeline_automation",
+          originId: input.pipelineId,
+          variables,
+          updatedByAgentId: actorPatch.agentId,
+          updatedByUserId: actorPatch.userId,
+          updatedAt: now,
+        })
+        .where(and(eq(routines.id, previousRoutine.id), eq(routines.companyId, input.companyId)))
+        .returning();
+      const revised = await appendPipelineAutomationRoutineRevision(
+        dbOrTx,
+        routine ?? previousRoutine,
+        input.actor,
+        "Updated pipeline automation",
+      );
+      return {
+        ...input.config,
+        onEnter: { type: "run_routine" as const, routineId: revised.id },
+      };
+    }
+
+    const now = nowDate();
+    const [created] = await dbOrTx
+      .insert(routines)
+      .values({
+        companyId: input.companyId,
+        title,
+        description,
+        assigneeAgentId: input.assigneeAgentId,
+        status: "active",
+        priority: "medium",
+        concurrencyPolicy: "coalesce_if_active",
+        catchUpPolicy: "skip_missed",
+        originKind: "pipeline_automation",
+        originId: input.pipelineId,
+        variables,
+        createdByAgentId: actorPatch.agentId,
+        createdByUserId: actorPatch.userId,
+        updatedByAgentId: actorPatch.agentId,
+        updatedByUserId: actorPatch.userId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+    const revised = await appendPipelineAutomationRoutineRevision(
+      dbOrTx,
+      created!,
+      input.actor,
+      "Created pipeline automation",
+    );
+    return {
+      ...input.config,
+      onEnter: { type: "run_routine" as const, routineId: revised.id },
+    };
+  }
+
   async function stampPipelineAutomationRoutine(
     dbOrTx: PipelineDb,
     input: { companyId: string; pipelineId: string; routineId: string; actor: PipelineActor },
@@ -1887,17 +2123,31 @@ export function pipelineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeu
       const existing = await getStageOrThrow(db, input.pipelineId, input.stageId);
       const kind = input.patch.kind ?? existing.kind;
       const previousRoutineId = stageAutomationRoutineIdFromConfig(stageConfig(existing));
+      const automationRequest = input.patch.config !== undefined
+        ? readStageAutomationRequest(input.patch.config)
+        : null;
       const config = normalizeStageConfig(kind, input.patch.config !== undefined ? input.patch.config : stageConfig(existing));
-      const nextRoutineId = stageAutomationRoutineIdFromConfig(config);
       await validateStageTargets(input.companyId, input.pipelineId, kind, config);
       await validateStageAutomationConfig(input.companyId, config);
       return db.transaction(async (tx) => {
+        const nextConfig = automationRequest
+          ? await syncPipelineStageAutomation(tx, {
+              companyId: input.companyId,
+              pipelineId: input.pipelineId,
+              stage: { ...existing, name: input.patch.name ?? existing.name, kind },
+              config,
+              assigneeAgentId: automationRequest.assigneeAgentId,
+              instructionsBody: automationRequest.instructionsBody,
+              actor: input.actor ?? { type: "system" },
+            })
+          : config;
+        const nextRoutineId = stageAutomationRoutineIdFromConfig(nextConfig);
         const [updated] = await tx
           .update(pipelineStages)
           .set({
             ...input.patch,
             kind,
-            config,
+            config: nextConfig,
             updatedAt: nowDate(),
           })
           .where(and(eq(pipelineStages.id, input.stageId), eq(pipelineStages.pipelineId, input.pipelineId)))

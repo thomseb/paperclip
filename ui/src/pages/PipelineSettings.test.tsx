@@ -99,6 +99,10 @@ function makePipeline(): PipelineDetail {
           disabled: false,
           requireApproval: false,
           approver: { kind: "any_human" },
+          automation: {
+            assigneeAgentId: "agent-1",
+            instructionsBody: "Collect requests.",
+          },
           whatHappensHere: "Collect requests.",
         },
       },
@@ -241,7 +245,6 @@ describe("PipelineSettings", () => {
     const tabLabels = Array.from(container.querySelectorAll("[data-tab-value]")).map((tab) => tab.textContent);
     expect(tabLabels).toEqual(["Stages", "Guidance"]);
     expect(tabLabels).not.toContain("Advanced");
-    expect(container.textContent).not.toContain("Automation");
 
     flushSync(() => {
       root.unmount();
@@ -249,18 +252,20 @@ describe("PipelineSettings", () => {
     queryClient.clear();
   });
 
-  it("renders the Instructions section and drops the old plain-text fields", async () => {
+  it("renders the Automation section and drops the old plain-text fields", async () => {
     const { container, root, queryClient } = renderSettings();
     await flushQueries();
 
     flushSync(() => {
-      findButton(container, "Instructions")!.click();
+      findButton(container, "Automation")!.click();
     });
 
     const headings = Array.from(container.querySelectorAll("h2")).map((heading) => heading.textContent ?? "");
-    expect(headings).toContain("Instructions");
+    expect(headings).toContain("Automation");
     expect(headings).not.toContain("What happens here");
     expect(headings).not.toContain("Routine variables");
+    expect(container.textContent).toContain("When an item enters this step");
+    expect(container.textContent).toContain("runs these instructions, then moves the item to the next step.");
     // The instructions body is the mocked MarkdownEditor, not a plain Textarea.
     expect(container.querySelector('[aria-label="Stage instructions"]')).not.toBeNull();
 
@@ -337,15 +342,22 @@ describe("PipelineSettings", () => {
   });
 
   it("seeds the instructions body from legacy whatHappensHere when no document exists", async () => {
+    const legacyPipeline = makePipeline();
+    legacyPipeline.stages[0]!.config = {
+      ...legacyPipeline.stages[0]!.config,
+      automation: { assigneeAgentId: "agent-1", instructionsBody: null },
+      whatHappensHere: "Legacy body.",
+    };
+    (pipelinesApi.get as unknown as { mockResolvedValueOnce: (value: unknown) => void }).mockResolvedValueOnce(legacyPipeline);
     const { container, root, queryClient } = renderSettings();
     await flushQueries();
 
     flushSync(() => {
-      findButton(container, "Instructions")!.click();
+      findButton(container, "Automation")!.click();
     });
 
     const editor = container.querySelector<HTMLTextAreaElement>('[aria-label="Stage instructions"]')!;
-    expect(editor.value).toBe("Collect requests.");
+    expect(editor.value).toBe("Legacy body.");
 
     flushSync(() => {
       root.unmount();
@@ -386,7 +398,7 @@ describe("PipelineSettings", () => {
     await flushQueries();
 
     flushSync(() => {
-      findButton(container, "Instructions")!.click();
+      findButton(container, "Automation")!.click();
     });
 
     const editor = container.querySelector<HTMLTextAreaElement>('[aria-label="Stage instructions"]')!;
@@ -405,15 +417,24 @@ describe("PipelineSettings", () => {
     });
     await flushQueries();
 
-    // One save action writes the per-stage document...
-    expect(pipelinesApi.upsertDocument).toHaveBeenCalledWith(
+    expect(pipelinesApi.upsertDocument).not.toHaveBeenCalledWith(
       "pipeline-1",
       "stage-instructions:stage-1",
-      expect.objectContaining({ body: "Draft {{customer\\_name}} for the {{event\\_date}} channel", baseRevisionId: null }),
+      expect.anything(),
     );
-    // ...and persists the synced routine variables in the stage config.
+    // One save action asks the server to sync the backing routine and persists
+    // the synced routine variables in the stage config.
     const updateStageCalls = (pipelinesApi.updateStage as unknown as { mock: { calls: unknown[][] } }).mock.calls;
-    const lastConfig = (updateStageCalls.at(-1)?.[2] as { config: { variables: Array<{ name: string }> } }).config;
+    const lastConfig = (updateStageCalls.at(-1)?.[2] as {
+      config: {
+        automation: { assigneeAgentId: string | null; instructionsBody: string };
+        variables: Array<{ name: string }>;
+      };
+    }).config;
+    expect(lastConfig.automation).toEqual({
+      assigneeAgentId: "agent-1",
+      instructionsBody: "Draft {{customer\\_name}} for the {{event\\_date}} channel",
+    });
     expect(lastConfig.variables.map((variable) => variable.name)).toEqual(["customer_name", "event_date"]);
 
     flushSync(() => {
@@ -422,38 +443,4 @@ describe("PipelineSettings", () => {
     queryClient.clear();
   });
 
-  it("recovers from a stale-revision conflict on the instructions upsert", async () => {
-    (pipelinesApi.upsertDocument as unknown as { mockRejectedValueOnce: (error: unknown) => void }).mockRejectedValueOnce(
-      new ApiError("Pipeline document was updated by someone else", 409, { code: "stale_base_revision" }),
-    );
-    const { container, root, queryClient } = renderSettings();
-    await flushQueries();
-
-    flushSync(() => {
-      findButton(container, "Instructions")!.click();
-    });
-
-    const editor = container.querySelector<HTMLTextAreaElement>('[aria-label="Stage instructions"]')!;
-    flushSync(() => {
-      setNativeValue(editor, "Updated instructions body");
-    });
-    await flushQueries();
-
-    flushSync(() => {
-      findButton(container, "Save stage")!.click();
-    });
-    await flushQueries();
-
-    expect(container.textContent).toContain("Someone else updated these instructions");
-    expect(findButton(container, "Reload latest")).toBeTruthy();
-    // No silent last-write-wins: the edited body is preserved for the user.
-    expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Stage instructions"]')!.value).toBe(
-      "Updated instructions body",
-    );
-
-    flushSync(() => {
-      root.unmount();
-    });
-    queryClient.clear();
-  });
 });
