@@ -217,6 +217,7 @@ export function DocumentAnnotationLayer({
   pendingHighlightText = null,
 }: AnnotationLayerProps) {
   const [highlightRects, setHighlightRects] = useState<HighlightRect[]>([]);
+  const [hoveredThreadId, setHoveredThreadId] = useState<string | null>(null);
   const [toolbarPosition, setToolbarPosition] = useState<ToolbarPosition | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const lastCaptureSelectionRequestIdRef = useRef<number>(0);
@@ -476,6 +477,7 @@ export function DocumentAnnotationLayer({
           {highlightRects.map((rect, index) => {
             if (rect.threadId === PENDING_HIGHLIGHT_THREAD_ID) return null;
             const isFocused = rect.focused;
+            const isHovered = rect.threadId === hoveredThreadId;
             return (
               <button
                 key={`${rect.threadId}-${index}`}
@@ -484,9 +486,12 @@ export function DocumentAnnotationLayer({
                 data-anchor-state={rect.anchorState}
                 data-status={rect.status}
                 data-focused={isFocused || undefined}
+                data-hovered={isHovered || undefined}
                 aria-label="Open annotation thread"
                 className={cn(
-                  "paperclip-doc-annotation-hit-target pointer-events-auto absolute cursor-pointer rounded-none bg-transparent",
+                  "paperclip-doc-annotation-hit-target pointer-events-auto absolute cursor-pointer rounded-none bg-transparent transition-colors",
+                  // Tint the run on hover so it's obvious which highlight you're over.
+                  isHovered && "bg-amber-400/40 dark:bg-amber-300/30",
                   isFocused && "ring-1 ring-transparent",
                 )}
                 style={{
@@ -495,6 +500,10 @@ export function DocumentAnnotationLayer({
                   width: rect.width,
                   height: rect.height,
                 }}
+                onMouseEnter={() => setHoveredThreadId(rect.threadId)}
+                onMouseLeave={() =>
+                  setHoveredThreadId((current) => (current === rect.threadId ? null : current))
+                }
                 onMouseDown={(event) => {
                   event.preventDefault();
                   onThreadFocus(rect.threadId);

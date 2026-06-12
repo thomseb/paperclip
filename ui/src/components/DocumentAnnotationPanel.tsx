@@ -123,8 +123,16 @@ function AnnotationPanelBody(props: AnnotationPanelProps) {
 
   // Show every thread that can be anchored in the document (orphaned threads have
   // lost their anchor). Filters were removed in favour of a single simple list.
+  // Sort in document order (top-to-bottom) — not by recency — so the comment list
+  // stays congruent with the highlights as you scroll the document.
   const visibleThreads = useMemo(
-    () => props.threads.filter((thread) => thread.anchorState !== "orphaned"),
+    () =>
+      props.threads
+        .filter((thread) => thread.anchorState !== "orphaned")
+        .sort((a, b) =>
+          (a.normalizedStart - b.normalizedStart)
+          || (a.markdownStart - b.markdownStart)
+          || (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())),
     [props.threads],
   );
 
@@ -168,6 +176,8 @@ function AnnotationPanelBody(props: AnnotationPanelProps) {
         documentKey: props.documentKey,
         baseRevisionId: props.baseRevisionId,
         baseRevisionNumber: props.baseRevisionNumber,
+        normalizedStart: anchor.selector.position.normalizedStart,
+        markdownStart: anchor.selector.position.markdownStart,
         author: currentUser,
       });
       queryClient.setQueryData<DocumentAnnotationThreadWithComments[]>(
@@ -264,6 +274,22 @@ function AnnotationPanelBody(props: AnnotationPanelProps) {
     }
   }, [props.open, props.pendingAnchor]);
 
+  // Keep the comment list congruent with the document: when a thread becomes
+  // focused — whether by clicking its highlight in the doc or by adding a new
+  // comment — scroll that card into view in the pane.
+  const listScrollRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!props.focusedThreadId) return;
+    const container = listScrollRef.current;
+    if (!container) return;
+    const card = container.querySelector<HTMLElement>(
+      `[data-thread-id="${props.focusedThreadId}"]`,
+    );
+    if (card && typeof card.scrollIntoView === "function") {
+      card.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [props.focusedThreadId, visibleThreads]);
+
   return (
     <>
       <div
@@ -295,7 +321,7 @@ function AnnotationPanelBody(props: AnnotationPanelProps) {
           {props.newCommentDisabledReason}
         </p>
       ) : null}
-      <div className="min-h-0 flex-1 overflow-y-auto bg-popover px-3 py-2">
+      <div ref={listScrollRef} className="min-h-0 flex-1 overflow-y-auto bg-popover px-3 py-2">
         {visibleThreads.length === 0 ? null : (
           <ul className="space-y-2">
             {visibleThreads.map((thread) => (
@@ -433,8 +459,8 @@ function ThreadCard(props: {
         data-focused={props.expanded || undefined}
         aria-labelledby={`thread-quote-${thread.id}`}
         className={cn(
-          "rounded-none border border-border bg-background transition-colors",
-          props.expanded && "ring-1 ring-ring/70",
+          "scroll-mt-2 rounded-none border border-border bg-background transition-colors",
+          props.expanded && "ring-2 ring-primary/80 ring-offset-1 ring-offset-popover",
           thread.status === "resolved" && "bg-muted",
         )}
         tabIndex={0}
@@ -666,6 +692,8 @@ function buildOptimisticThread(input: {
   documentKey: string;
   baseRevisionId: string;
   baseRevisionNumber: number;
+  normalizedStart: number;
+  markdownStart: number;
   author: OptimisticAuthor;
 }): DocumentAnnotationThreadWithComments {
   const id = optimisticId("optimistic-thread");
@@ -686,6 +714,8 @@ function buildOptimisticThread(input: {
     status: "open",
     anchorState: "active",
     selectedText: input.selectedText,
+    normalizedStart: input.normalizedStart,
+    markdownStart: input.markdownStart,
     originalRevisionId: input.baseRevisionId,
     originalRevisionNumber: input.baseRevisionNumber,
     currentRevisionId: input.baseRevisionId,

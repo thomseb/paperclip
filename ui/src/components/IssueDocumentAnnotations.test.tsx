@@ -481,6 +481,32 @@ describe("IssueDocumentAnnotations", () => {
     expect(filterChip).toBeUndefined();
   });
 
+  it("orders threads by document position, not API/recency order", async () => {
+    // Returned out of document order: later-in-doc first, earlier-in-doc last.
+    mockAnnotationsApi.list.mockResolvedValue([
+      makeThread({ id: "thread-late", normalizedStart: 900, markdownStart: 900 }),
+      makeThread({ id: "thread-early", normalizedStart: 10, markdownStart: 10 }),
+      makeThread({ id: "thread-mid", normalizedStart: 400, markdownStart: 400 }),
+    ]);
+    const root = createRoot(container);
+    const queryClient = makeQueryClient();
+    const doc = makeDoc();
+
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={queryClient}>
+          <Harness doc={doc} initialPanelOpen />
+        </QueryClientProvider>,
+      );
+    });
+    await flush();
+    await flush();
+
+    const order = Array.from(container.querySelectorAll("[data-thread-id]"))
+      .map((el) => el.getAttribute("data-thread-id"));
+    expect(order).toEqual(["thread-early", "thread-mid", "thread-late"]);
+  });
+
   it("renders author name + role from agent and user maps", async () => {
     mockAnnotationsApi.list.mockResolvedValue([
       makeThread({
