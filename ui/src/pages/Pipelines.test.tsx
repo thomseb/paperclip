@@ -729,10 +729,14 @@ describe("PipelineItemDetailView", () => {
 
     const waitingSection = container.querySelector('section[aria-label="Waiting child items"]');
     expect(waitingSection).not.toBeNull();
+    expect(waitingSection?.className).not.toContain("bg-muted");
     expect(waitingSection?.textContent).toContain("Waiting on 2 of 2 child items");
     expect(waitingSection?.textContent).toContain("Live with CodexCoder");
     expect(waitingSection?.textContent).toContain("1 live downstream");
     expect(waitingSection?.querySelectorAll("li")).toHaveLength(2);
+    for (const rowLink of waitingSection?.querySelectorAll("li a") ?? []) {
+      expect(rowLink.className).not.toContain("bg-muted");
+    }
 
     act(() => {
       root.unmount();

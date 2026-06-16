@@ -2026,7 +2026,7 @@ export function PipelineItemDetailView({ pipelineId, caseId }: { pipelineId: str
       ) : null}
 
       {(childrenGate || (breakdown?.waitForPieces ?? false)) && waitingChildren.length > 0 ? (
-        <section aria-label="Waiting child items" className="mb-5 border-y border-border bg-muted/20 py-4">
+        <section aria-label="Waiting child items" className="mb-5 border-y border-border py-4">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
               <ListTree className="h-4 w-4 text-muted-foreground" />
@@ -2213,7 +2213,7 @@ function WaitingChildRow({
     <li>
       <Link
         to={`/pipelines/${row.case.pipelineId}/items/${row.case.id}`}
-        className="grid grid-cols-[18px_minmax(0,1fr)_auto] items-start gap-3 py-2 text-sm hover:bg-muted/40"
+        className="grid grid-cols-[18px_minmax(0,1fr)_auto] items-start gap-3 py-2 text-sm"
       >
         <GitBranch className="h-4 w-4 text-muted-foreground" />
         <span className="min-w-0">
