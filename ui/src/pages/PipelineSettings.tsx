@@ -83,7 +83,7 @@ import {
   type BreakdownCopyNames,
 } from "../lib/pipeline-breakdown";
 
-type StageSectionKey = "instructions" | "advanced" | "secrets" | "runs" | "activity" | "history";
+type StageSectionKey = "instructions" | "advanced" | "secrets" | "activity" | "history";
 type ApproverKind = "any_human" | "user" | "agent";
 type EditableStageKind = "working" | "review" | "done" | "cancelled";
 
@@ -130,14 +130,13 @@ const STAGE_NAV_GROUPS: Array<{
     label: "Stage",
     items: [
       { id: "instructions", label: "Automation", icon: LayoutGrid },
-      { id: "secrets", label: "Secrets", icon: KeyRound },
       { id: "advanced", label: "Advanced", icon: SlidersHorizontal },
+      { id: "secrets", label: "Secrets", icon: KeyRound },
     ],
   },
   {
     label: "Operate",
     items: [
-      { id: "runs", label: "Runs", icon: Play },
       { id: "activity", label: "Activity", icon: ActivityIcon },
       { id: "history", label: "History", icon: HistoryIcon },
     ],
@@ -147,7 +146,6 @@ const STAGE_NAV_GROUPS: Array<{
 const STAGE_SECTION_TITLES: Record<StageSectionKey, string> = {
   instructions: "Automation",
   secrets: "Secrets",
-  runs: "Runs",
   activity: "Activity",
   history: "History",
   advanced: "Advanced",
@@ -764,7 +762,7 @@ export function PipelineSettings() {
       !!selectedCompanyId &&
       !!pipelineId &&
       !!selectedStage &&
-      (activeStageSection === "runs" || activeStageSection === "activity"),
+      activeStageSection === "activity",
   });
 
   const stageEvents = useMemo(() => {
@@ -779,11 +777,6 @@ export function PipelineSettings() {
         ),
     );
   }, [pipelineId, selectedStage, stageEventsQuery.data?.items]);
-
-  const stageRunEvents = useMemo(
-    () => stageEvents.filter((event) => Boolean(event.runId || event.actorAgent || event.automation)),
-    [stageEvents],
-  );
 
   useEffect(() => {
     if (!pipeline) return;
@@ -2060,20 +2053,6 @@ export function PipelineSettings() {
                           </div>
                         </FieldRow>
                       </div>
-                      )}
-                    </div>
-                  ) : null}
-
-                  {activeStageSection === "runs" ? (
-                    <div className="w-full space-y-3">
-                      {stageEventsQuery.isLoading ? (
-                        <PageSkeleton variant="list" />
-                      ) : (
-                        <StageEventsList
-                          events={stageRunEvents}
-                          stages={stages}
-                          emptyMessage="No stage runs yet."
-                        />
                       )}
                     </div>
                   ) : null}

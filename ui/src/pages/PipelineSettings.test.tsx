@@ -350,6 +350,75 @@ describe("PipelineSettings", () => {
     queryClient.clear();
   });
 
+  it("orders stage settings before activity and removes the Runs section", async () => {
+    const { container, root, queryClient } = renderSettings();
+    await flushQueries();
+
+    const stageSectionButtons = Array.from(
+      container.querySelectorAll<HTMLElement>('nav[aria-label="Stage sections"] button'),
+    ).map((button) => button.textContent?.trim() ?? "");
+
+    expect(stageSectionButtons).toEqual(["Automation", "Advanced", "Secrets", "Activity", "History"]);
+    expect(stageSectionButtons).not.toContain("Runs");
+
+    flushSync(() => {
+      root.unmount();
+    });
+    queryClient.clear();
+  });
+
+  it("shows run-backed stage events in Activity", async () => {
+    vi.mocked(pipelinesApi.listCompanyCaseEvents).mockResolvedValue({
+      items: [
+        {
+          id: "event-1",
+          companyId: "company-1",
+          caseId: "case-1",
+          type: "case.automation_executed",
+          actorType: "agent",
+          actorAgentId: "agent-1",
+          actorUserId: null,
+          runId: "run-1",
+          fromStageId: null,
+          toStageId: "stage-1",
+          payload: {},
+          case: { id: "case-1", caseKey: "CASE-1", title: "Launch checklist" },
+          pipeline: { id: "pipeline-1", key: "content_pipeline", name: "Content pipeline" },
+          fromStage: null,
+          toStage: { id: "stage-1", key: "intake", name: "Intake", kind: "working" },
+          actorAgent: { id: "agent-1", name: "QA Agent" },
+          automation: {
+            routine: { id: "routine-1", title: "Intake automation" },
+            issue: { id: "issue-1", identifier: "PAP-1", title: "Run intake", status: "done" },
+            routineRunId: "routine-run-1",
+            stage: { id: "stage-1", key: "intake", name: "Intake", kind: "working" },
+          },
+          createdAt: "2026-06-01T00:00:00.000Z",
+          updatedAt: "2026-06-01T00:00:00.000Z",
+        },
+      ],
+      pagination: { limit: 75, offset: 0, nextOffset: null, hasMore: false },
+    });
+    const { container, root, queryClient } = renderSettings();
+    await flushQueries();
+
+    flushSync(() => {
+      findButton(container, "Activity")!.click();
+    });
+    await flushQueries();
+
+    expect(pipelinesApi.listCompanyCaseEvents).toHaveBeenCalledWith("company-1", { limit: 75 });
+    expect(container.textContent).toContain("Launch checklist");
+    expect(container.textContent).toContain("Automation completed");
+    expect(container.textContent).toContain("Intake automation");
+    expect(container.textContent).toContain("PAP-1");
+
+    flushSync(() => {
+      root.unmount();
+    });
+    queryClient.clear();
+  });
+
   it("shows intake fields only in the lower editor", async () => {
     const intakePipeline = makePipeline();
     const intakeStage = intakePipeline.stages[0]!;
@@ -684,7 +753,7 @@ describe("PipelineSettings", () => {
     queryClient.clear();
   });
 
-  it("shows automation issue events in the selected stage Runs section", async () => {
+  it("shows automation issue events in the selected stage Activity section", async () => {
     (pipelinesApi.listCompanyCaseEvents as unknown as { mockResolvedValueOnce: (value: unknown) => void }).mockResolvedValueOnce({
       items: [
         {
@@ -720,7 +789,7 @@ describe("PipelineSettings", () => {
     await flushQueries();
 
     flushSync(() => {
-      findButton(container, "Runs")!.click();
+      findButton(container, "Activity")!.click();
     });
     await flushQueries();
 
