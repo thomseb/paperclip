@@ -956,7 +956,10 @@ describe("WATCHDOG_DEFAULT_MANDATE", () => {
       "bypass execution-policy stages that require a typed reviewer or approver.",
     );
     expect(WATCHDOG_DEFAULT_MANDATE).toContain(
-      "Stay inside the watched subtree.",
+      "Stay inside the watched subtree for source-work recovery.",
+    );
+    expect(WATCHDOG_DEFAULT_MANDATE).toContain(
+      "create a linked engineering follow-up outside the watched source tree",
     );
   });
 

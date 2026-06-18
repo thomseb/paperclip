@@ -445,6 +445,87 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
     expect(allowedChild.body.parentId).toBe(watchedChildId);
   });
 
+  it("routes watchdog-discovered product bugs outside the watched source tree with evidence links", async () => {
+    const companyId = await seedCompany();
+    const watchdogAgentId = await seedAgent(companyId, { name: "Product Bug Watchdog" });
+    const watchedRootId = await seedIssue(companyId, {
+      title: "Watched root",
+      identifier: "PAP-100",
+      issueNumber: 100,
+    });
+    const watchedChildId = await seedIssue(companyId, {
+      title: "Watched child",
+      identifier: "PAP-101",
+      issueNumber: 101,
+      parentId: watchedRootId,
+    });
+    const watchdogIssueId = await seedIssue(companyId, {
+      title: "Reusable watchdog issue",
+      identifier: "PAP-102",
+      issueNumber: 102,
+      parentId: watchedRootId,
+      assigneeAgentId: watchdogAgentId,
+      originKind: "task_watchdog",
+      originId: watchedRootId,
+    });
+    const runId = await seedWatchdogRun({
+      companyId,
+      watchdogAgentId,
+      watchedIssueId: watchedRootId,
+      watchdogIssueId,
+    });
+    const app = createApp(companyId, {
+      type: "agent",
+      agentId: watchdogAgentId,
+      companyId,
+      runId,
+      source: "agent_jwt",
+    });
+
+    const res = await request(app)
+      .post(`/api/companies/${companyId}/issues`)
+      .send({
+        title: "Fix watchdog source-tree pollution",
+        description: "Watchdog found a Paperclip follow-up routing bug.",
+        parentId: watchedChildId,
+        watchdogDiscovery: {
+          kind: "product_bug",
+          evidenceMarkdown: "The watchdog would otherwise create this under the watched child.",
+        },
+      });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body).toMatchObject({
+      title: "Fix watchdog source-tree pollution",
+      parentId: null,
+      originKind: "task_watchdog_product_bug",
+      originId: watchedRootId,
+      originRunId: runId,
+    });
+    expect(res.body.description).toContain("## Watchdog Discovery");
+    expect(res.body.description).toContain("Watched source issue: [PAP-100](/PAP/issues/PAP-100)");
+    expect(res.body.description).toContain("Watchdog issue: [PAP-102](/PAP/issues/PAP-102)");
+    expect(res.body.referencedIssueIdentifiers).toEqual(expect.arrayContaining(["PAP-100", "PAP-102"]));
+
+    const watchedSourceChildren = await db
+      .select({ id: issues.id, title: issues.title })
+      .from(issues)
+      .where(and(eq(issues.companyId, companyId), eq(issues.parentId, watchedChildId)));
+    expect(watchedSourceChildren).toHaveLength(0);
+
+    const [createdActivity] = await db
+      .select({ details: activityLog.details })
+      .from(activityLog)
+      .where(and(eq(activityLog.companyId, companyId), eq(activityLog.entityId, res.body.id)));
+    expect(createdActivity?.details).toMatchObject({
+      watchdogDiscovery: {
+        kind: "product_bug",
+        sourceIssueId: watchedRootId,
+        watchdogIssueId,
+      },
+    });
+  });
+
   it("rejects watchdog interaction-resolution attempts outside the persisted watched subtree", async () => {
     const companyId = await seedCompany();
     const watchdogAgentId = await seedAgent(companyId, { name: "Interaction Watchdog" });

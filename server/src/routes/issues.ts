@@ -44,6 +44,7 @@ import {
   linkIssueApprovalSchema,
   issueDocumentKeySchema,
   ISSUE_CONTINUATION_SUMMARY_DOCUMENT_KEY,
+  ISSUE_WATCHDOG_DISCOVERY_KINDS,
   rejectIssueThreadInteractionSchema,
   restoreIssueDocumentRevisionSchema,
   respondIssueThreadInteractionSchema,
@@ -59,6 +60,7 @@ import {
   type CompanySearchResponse,
   type ExecutionWorkspace,
   type IssueRelationIssueSummary,
+  type IssueWatchdogDiscoveryKind,
   type SourceTrustMetadata,
   type SuccessfulRunHandoffState,
 } from "@paperclipai/shared";
@@ -1056,6 +1058,7 @@ export function issueRoutes(
       ? heartbeat.wakeup
       : opts.taskWatchdogEnqueueWakeup ?? undefined,
   });
+  const TASK_WATCHDOG_PRODUCT_BUG_ORIGIN_KIND = "task_watchdog_product_bug";
   const routinesSvc = routineService(db, {
     pluginWorkerManager: opts.pluginWorkerManager,
   });
@@ -2060,6 +2063,101 @@ export function issueRoutes(
       },
     });
     return false;
+  }
+
+  function normalizeWatchdogDiscovery(input: unknown): {
+    kind: IssueWatchdogDiscoveryKind;
+    evidenceMarkdown: string | null;
+  } | null {
+    if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+    const record = input as Record<string, unknown>;
+    const kind = typeof record.kind === "string" &&
+      (ISSUE_WATCHDOG_DISCOVERY_KINDS as readonly string[]).includes(record.kind)
+      ? record.kind as IssueWatchdogDiscoveryKind
+      : null;
+    if (!kind) return null;
+    const evidenceMarkdown =
+      typeof record.evidenceMarkdown === "string" && record.evidenceMarkdown.trim().length > 0
+        ? record.evidenceMarkdown.trim()
+        : null;
+    return { kind, evidenceMarkdown };
+  }
+
+  function issueMarkdownLink(issue: { id: string; identifier?: string | null }) {
+    const identifier = issue.identifier?.trim();
+    if (!identifier) return `\`${issue.id}\``;
+    const prefix = identifier.split("-")[0] || "PAP";
+    return `[${identifier}](/${prefix}/issues/${identifier})`;
+  }
+
+  function appendWatchdogDiscoveryContext(input: {
+    description: string | null | undefined;
+    discovery: { kind: IssueWatchdogDiscoveryKind; evidenceMarkdown: string | null };
+    sourceIssue: { id: string; identifier?: string | null };
+    watchdogIssue: { id: string; identifier?: string | null } | null;
+    stopFingerprint: string | null;
+    runId: string | null;
+  }) {
+    const contextLines = [
+      "## Watchdog Discovery",
+      "",
+      `Kind: \`${input.discovery.kind}\``,
+      `Watched source issue: ${issueMarkdownLink(input.sourceIssue)}`,
+      input.watchdogIssue ? `Watchdog issue: ${issueMarkdownLink(input.watchdogIssue)}` : null,
+      input.stopFingerprint ? `Stopped fingerprint: \`${input.stopFingerprint}\`` : null,
+      input.runId ? `Watchdog run: \`${input.runId}\`` : null,
+      input.discovery.evidenceMarkdown ? "" : null,
+      input.discovery.evidenceMarkdown ? "Evidence:" : null,
+      input.discovery.evidenceMarkdown ?? null,
+    ].filter((line): line is string => line != null);
+    const existing = input.description?.trim();
+    return existing ? `${existing}\n\n${contextLines.join("\n")}` : contextLines.join("\n");
+  }
+
+  async function resolveTaskWatchdogProductBugFollowUp(
+    req: Request,
+    res: Response,
+    companyId: string,
+    discovery: { kind: IssueWatchdogDiscoveryKind; evidenceMarkdown: string | null } | null,
+  ) {
+    if (!discovery) return null;
+    if (req.actor.type !== "agent") {
+      res.status(403).json({
+        error: "Only task-watchdog agent runs can create watchdog-discovered product bug follow-ups",
+      });
+      return false;
+    }
+    const scope = await resolveTaskWatchdogMutationScope(db, req.actor);
+    if (scope.kind === "none") {
+      res.status(403).json({ error: "Only task-watchdog runs can create watchdog-discovered product bug follow-ups" });
+      return false;
+    }
+    if (scope.kind === "invalid") {
+      res.status(403).json({
+        error: scope.detail,
+        details: {
+          securityPrinciples: ["Least Privilege", "Complete Mediation", "Fail Securely"],
+        },
+      });
+      return false;
+    }
+    if (scope.companyId !== companyId) {
+      res.status(403).json({ error: "Task-watchdog product bug follow-up target is outside the watchdog company" });
+      return false;
+    }
+
+    const sourceIssue = await svc.getById(scope.watchedIssueId);
+    if (!sourceIssue || sourceIssue.companyId !== companyId) {
+      res.status(404).json({ error: "Watched source issue not found" });
+      return false;
+    }
+    const watchdogIssue = scope.watchdogIssueId ? await svc.getById(scope.watchdogIssueId) : null;
+    if (watchdogIssue && watchdogIssue.companyId !== companyId) {
+      res.status(403).json({ error: "Task-watchdog product bug evidence issue is outside the watchdog company" });
+      return false;
+    }
+
+    return { scope, discovery, sourceIssue, watchdogIssue };
   }
 
   function isStatusOnlyCheapRecoveryContext(contextSnapshot: unknown) {
@@ -4550,8 +4648,18 @@ export function issueRoutes(
     assertCompanyAccess(req, companyId);
     if (await assertLowTrustControlPlaneDenied(req, res, companyId, null)) return;
     assertNoAgentHostWorkspaceCommandMutation(req, collectIssueWorkspaceCommandPaths(req.body));
+    const { watchdogDiscovery: rawWatchdogDiscovery, ...rawCreateBody } = req.body;
+    const watchdogDiscovery = normalizeWatchdogDiscovery(rawWatchdogDiscovery);
+    const watchdogProductBugFollowUp = await resolveTaskWatchdogProductBugFollowUp(
+      req,
+      res,
+      companyId,
+      watchdogDiscovery,
+    );
+    if (watchdogProductBugFollowUp === false) return;
+    const effectiveParentId = watchdogProductBugFollowUp ? null : rawCreateBody.parentId;
     let createParent: Awaited<ReturnType<typeof svc.getById>> | null = null;
-    if (req.actor.type === "agent" && !req.body.parentId) {
+    if (req.actor.type === "agent" && !effectiveParentId && !watchdogProductBugFollowUp) {
       const companyScopeDecision = await access.decide({
         actor: req.actor,
         action: "company_scope:read",
@@ -4562,41 +4670,68 @@ export function issueRoutes(
         return;
       }
     }
-    if (req.actor.type === "agent" && req.body.parentId) {
-      createParent = await svc.getById(req.body.parentId);
+    if (req.actor.type === "agent" && effectiveParentId) {
+      createParent = await svc.getById(effectiveParentId);
       if (!createParent || createParent.companyId !== companyId) {
         res.status(404).json({ error: "Parent issue not found" });
         return;
       }
       if (!(await assertIssueReadAllowed(req, res, createParent))) return;
     }
-    if (!(await assertTaskWatchdogCreateIssueAllowed(req, res, companyId, createParent))) return;
+    if (
+      !watchdogProductBugFollowUp &&
+      !(await assertTaskWatchdogCreateIssueAllowed(req, res, companyId, createParent))
+    ) return;
     const normalizedAssigneeAgentId = await normalizeIssueAssigneeAgentReference(
       companyId,
-      req.body.assigneeAgentId as string | null | undefined,
+      rawCreateBody.assigneeAgentId as string | null | undefined,
     );
     const actor = getActorInfo(req);
-    const runWorkspaceInheritanceSourceIssueId = hasExplicitIssueWorkspaceCreateSelection(req.body)
+    const runWorkspaceInheritanceSourceIssueId = hasExplicitIssueWorkspaceCreateSelection(rawCreateBody)
       ? null
       : await resolveRunIssueWorkspaceInheritanceSource(companyId, actor);
     const createBody = {
-      ...req.body,
+      ...rawCreateBody,
+      parentId: effectiveParentId,
       ...(normalizedAssigneeAgentId !== undefined ? { assigneeAgentId: normalizedAssigneeAgentId } : {}),
       ...(runWorkspaceInheritanceSourceIssueId
         ? { inheritExecutionWorkspaceFromIssueId: runWorkspaceInheritanceSourceIssueId }
         : {}),
+      ...(watchdogProductBugFollowUp
+        ? {
+          description: appendWatchdogDiscoveryContext({
+            description: rawCreateBody.description,
+            discovery: watchdogProductBugFollowUp.discovery,
+            sourceIssue: watchdogProductBugFollowUp.sourceIssue,
+            watchdogIssue: watchdogProductBugFollowUp.watchdogIssue,
+            stopFingerprint: watchdogProductBugFollowUp.scope.stopFingerprint,
+            runId: actor.runId,
+          }),
+          projectId: rawCreateBody.projectId ?? watchdogProductBugFollowUp.sourceIssue.projectId,
+          goalId: rawCreateBody.goalId ?? watchdogProductBugFollowUp.sourceIssue.goalId,
+          billingCode: rawCreateBody.billingCode ?? watchdogProductBugFollowUp.sourceIssue.billingCode,
+          originKind: TASK_WATCHDOG_PRODUCT_BUG_ORIGIN_KIND,
+          originId: watchdogProductBugFollowUp.sourceIssue.id,
+          originRunId: actor.runId,
+          originFingerprint: [
+            TASK_WATCHDOG_PRODUCT_BUG_ORIGIN_KIND,
+            watchdogProductBugFollowUp.sourceIssue.id,
+            actor.runId ?? randomUUID(),
+          ].join(":"),
+        }
+        : {}),
     };
     if (!(await assertCheapRecoveryIssueAssigneeProfileAllowed(req, res, { companyId }, createBody))) return;
-    if (req.body.assigneeAgentId || req.body.assigneeUserId) {
+    if (rawCreateBody.assigneeAgentId || rawCreateBody.assigneeUserId) {
       await assertCanAssignTasks(req, companyId, {
         projectId: await resolveAssignmentProjectId({
           companyId,
-          projectId: req.body.projectId,
-          parentIssueId: req.body.parentId,
+          projectId: createBody.projectId,
+          parentIssueId: createBody.parentId,
         }),
-        parentIssueId: req.body.parentId ?? null,
+        parentIssueId: createBody.parentId ?? null,
         assigneeAgentId: createBody.assigneeAgentId ?? null,
-        assigneeUserId: req.body.assigneeUserId ?? null,
+        assigneeUserId: rawCreateBody.assigneeUserId ?? null,
       });
     }
     await assertIssueEnvironmentSelection(companyId, createBody.executionWorkspaceSettings?.environmentId);
@@ -4641,6 +4776,18 @@ export function issueRoutes(
       details: {
         title: issue.title,
         identifier: issue.identifier,
+        ...(watchdogProductBugFollowUp
+          ? {
+            watchdogDiscovery: {
+              kind: watchdogProductBugFollowUp.discovery.kind,
+              sourceIssueId: watchdogProductBugFollowUp.sourceIssue.id,
+              sourceIssueIdentifier: watchdogProductBugFollowUp.sourceIssue.identifier,
+              watchdogIssueId: watchdogProductBugFollowUp.watchdogIssue?.id ?? null,
+              watchdogIssueIdentifier: watchdogProductBugFollowUp.watchdogIssue?.identifier ?? null,
+              stopFingerprint: watchdogProductBugFollowUp.scope.stopFingerprint,
+            },
+          }
+          : {}),
         ...buildCreateIssueActivityStatusDetails(issue, res),
         ...(Array.isArray(req.body.blockedByIssueIds) ? { blockedByIssueIds: req.body.blockedByIssueIds } : {}),
         ...summarizeIssueReferenceActivityDetails({

@@ -186,10 +186,12 @@ describeEmbeddedPostgres("task watchdog scheduler", () => {
           operations: expect.arrayContaining([
             "comment_on_watched_subtree_issues",
             "create_child_issues_under_non_watchdog_watched_subtree",
+            "create_product_bug_followups_outside_watched_subtree",
             "update_reusable_watchdog_issue",
           ]),
           deniedOperations: expect.arrayContaining([
             "create_visible_probe_issues_or_throwaway_tasks",
+            "create_product_bug_followups_as_source_tree_children",
             "mutate_task_watchdog_descendants",
           ]),
         },

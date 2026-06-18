@@ -24,6 +24,7 @@ import {
   ISSUE_THREAD_INTERACTION_CONTINUATION_POLICIES,
   ISSUE_THREAD_INTERACTION_KINDS,
   ISSUE_THREAD_INTERACTION_STATUSES,
+  ISSUE_WATCHDOG_DISCOVERY_KINDS,
   MODEL_PROFILE_KEYS,
   REQUEST_CHECKBOX_CONFIRMATION_OPTION_LIMIT,
 } from "../constants.js";
@@ -394,6 +395,10 @@ const createIssueBaseSchema = z.object({
   executionWorkspacePreference: z.enum(ISSUE_EXECUTION_WORKSPACE_PREFERENCES).optional().nullable(),
   executionWorkspaceSettings: issueExecutionWorkspaceSettingsSchema.optional().nullable(),
   labelIds: z.array(z.string().uuid()).optional(),
+  watchdogDiscovery: z.object({
+    kind: z.enum(ISSUE_WATCHDOG_DISCOVERY_KINDS),
+    evidenceMarkdown: multilineTextSchema.optional().nullable(),
+  }).strict().optional().nullable(),
   watchdog: z.object({
     agentId: z.string().uuid(),
     instructions: multilineTextSchema.optional().nullable(),
@@ -419,6 +424,7 @@ export const createChildIssueSchema = withCreateIssueStatusDefault(createIssueBa
   .omit({
     parentId: true,
     inheritExecutionWorkspaceFromIssueId: true,
+    watchdogDiscovery: true,
   })
   .extend({
     acceptanceCriteria: z.array(z.string().trim().min(1).max(500)).max(20).optional(),
