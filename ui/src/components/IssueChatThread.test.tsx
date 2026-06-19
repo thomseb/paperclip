@@ -614,8 +614,8 @@ describe("IssueChatThread", () => {
       }));
     });
 
-    expect(composer?.getAttribute("data-pending-work-mode")).toBe("planning");
-    expect(chip?.textContent).toContain("Plan mode");
+    expect(composer?.getAttribute("data-pending-work-mode")).toBe("standard");
+    expect(chip?.textContent).toContain("Agent mode");
 
     act(() => {
       root.unmount();
