@@ -60,6 +60,7 @@ export interface InstanceExperimentalSettings {
 
 export interface InstanceSettings {
   id: string;
+  defaultEnvironmentId: string | null;
   general: InstanceGeneralSettings;
   experimental: InstanceExperimentalSettings;
   createdAt: Date;

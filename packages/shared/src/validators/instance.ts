@@ -75,3 +75,12 @@ export type PatchInstanceExperimentalSettings = z.infer<typeof patchInstanceExpe
 export type IssueGraphLivenessAutoRecoveryRequest = z.infer<
   typeof issueGraphLivenessAutoRecoveryRequestSchema
 >;
+
+export const instanceSettingsSchema = z.object({
+  id: z.string().uuid(),
+  defaultEnvironmentId: z.string().uuid().nullable(),
+  general: instanceGeneralSettingsSchema,
+  experimental: instanceExperimentalSettingsSchema,
+  createdAt: z.union([z.date(), z.string().datetime()]),
+  updatedAt: z.union([z.date(), z.string().datetime()]),
+}).strict();

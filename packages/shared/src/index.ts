@@ -897,6 +897,7 @@ export {
 } from "./execution-workspace-guards.js";
 
 export {
+  instanceSettingsSchema,
   instanceGeneralSettingsSchema,
   patchInstanceGeneralSettingsSchema,
   type PatchInstanceGeneralSettings,
