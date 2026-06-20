@@ -19,7 +19,6 @@ function cacheKeyForTarget(command: string, target: AdapterExecutionTarget | nul
       "sandbox",
       target.providerKey ?? "",
       target.environmentId ?? "",
-      target.leaseId ?? "",
       command,
     ].join(":");
   }

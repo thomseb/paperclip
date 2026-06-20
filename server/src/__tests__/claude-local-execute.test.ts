@@ -873,7 +873,7 @@ describe("claude execute", () => {
     }
   }, 10_000);
 
-  it("passes through --effort and reuses the sandbox capability probe when the installed Claude CLI advertises it", async () => {
+  it("passes through --effort and reuses the sandbox capability probe across sandbox leases when the installed Claude CLI advertises it", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-claude-execute-sandbox-effort-supported-"));
     const { workspace, commandPath, capturePath, restore } = await setupExecuteEnv(root, {
       commandWriter: writeHelpWithEffortClaudeCommand,
@@ -929,6 +929,10 @@ describe("claude execute", () => {
       const second = await execute({
         runId: "run-sandbox-effort-supported-2",
         ...baseInput,
+        executionTarget: {
+          ...baseInput.executionTarget,
+          leaseId: "lease-2",
+        },
       });
 
       expect(first.exitCode).toBe(0);
