@@ -465,6 +465,8 @@ export interface PluginExternalObjectDetection {
   providerKey: string;
   objectType: string;
   externalId: string;
+  displayKey?: string | null;
+  iconKey?: string | null;
   displayTitle?: string | null;
   confidence?: ExternalObjectMentionConfidence;
 }
@@ -481,9 +483,12 @@ export interface PluginExternalObjectRecordSnapshot {
   externalId: string;
   sanitizedCanonicalUrl: string | null;
   canonicalIdentityHash: string | null;
+  displayKey: string | null;
+  iconKey: string | null;
   displayTitle: string | null;
   statusKey: string | null;
   statusLabel: string | null;
+  statusIconKey: string | null;
   statusCategory: ExternalObjectStatusCategory;
   statusTone: ExternalObjectStatusTone;
   liveness: ExternalObjectLivenessState;
@@ -502,9 +507,12 @@ export interface ResolveExternalObjectParams {
 }
 
 export interface PluginExternalObjectResolvedSnapshot {
+  displayKey?: string | null;
+  iconKey?: string | null;
   displayTitle?: string | null;
   statusKey?: string | null;
   statusLabel?: string | null;
+  statusIconKey?: string | null;
   statusCategory: ExternalObjectStatusCategory;
   statusTone: ExternalObjectStatusTone;
   isTerminal?: boolean;

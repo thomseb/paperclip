@@ -35,9 +35,12 @@ import type {
 export interface MarkdownExternalReference {
   providerKey: string | null;
   objectType: string | null;
+  displayKey?: string | null;
+  iconKey?: string | null;
   statusCategory: ExternalObjectStatusCategory;
   liveness: ExternalObjectLivenessState;
   statusLabel?: string | null;
+  statusIconKey?: string | null;
   displayTitle?: string | null;
 }
 
@@ -115,14 +118,15 @@ function MarkdownExternalLink({
   children: ReactNode;
 }) {
   const provider = externalObjectProviderLabel(reference.providerKey);
+  const displayKey = reference.displayKey?.trim() || provider;
   const statusLabel = reference.statusLabel ?? externalObjectCategoryLabel(reference.statusCategory);
   const livenessLabel = externalObjectLivenessLabel(reference.liveness);
   const livenessSuffix = reference.liveness === "fresh" || reference.liveness === "unknown"
     ? ""
     : ` (${livenessLabel})`;
   const titleParts = [
-    reference.displayTitle ?? `${provider} ${statusLabel}`,
-    `${provider} — ${statusLabel}${livenessSuffix}`,
+    reference.displayTitle ?? `${displayKey} ${statusLabel}`,
+    `${displayKey} — ${statusLabel}${livenessSuffix}`,
   ];
   const title = titleParts.filter(Boolean).join(" · ");
   return (
@@ -134,13 +138,14 @@ function MarkdownExternalLink({
       data-external-status={reference.statusCategory}
       data-external-liveness={reference.liveness}
       title={title}
-      aria-label={`${provider} ${statusLabel}${livenessSuffix}: ${reference.displayTitle ?? href}`}
+      aria-label={`${displayKey} ${statusLabel}${livenessSuffix}: ${reference.displayTitle ?? href}`}
       className="paperclip-markdown-external-ref"
     >
       <ExternalObjectStatusIcon
         category={reference.statusCategory}
         liveness={reference.liveness}
-        label={`${provider}: ${statusLabel}`}
+        statusIconKey={reference.statusIconKey}
+        label={`${displayKey}: ${statusLabel}`}
         inline
       />
       {children}

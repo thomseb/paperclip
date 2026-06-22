@@ -96,10 +96,13 @@ export function useIssueExternalObjects(issueId: string | null | undefined): Iss
           pill: {
             providerKey: object.providerKey,
             objectType: object.objectType,
+            displayKey: object.displayKey,
+            iconKey: object.iconKey,
             statusCategory: object.statusCategory,
             liveness: object.liveness,
             displayTitle: object.displayTitle,
             statusLabel: object.statusLabel,
+            statusIconKey: object.statusIconKey,
             url: object.sanitizedCanonicalUrl,
           },
         };
@@ -117,9 +120,12 @@ export function useIssueExternalObjects(issueId: string | null | undefined): Iss
         result[canonical] = {
           providerKey: object.providerKey,
           objectType: object.objectType,
+          displayKey: object.displayKey,
+          iconKey: object.iconKey,
           statusCategory: object.statusCategory,
           liveness: object.liveness,
           statusLabel: object.statusLabel,
+          statusIconKey: object.statusIconKey,
           displayTitle: object.displayTitle,
         };
       }
@@ -133,9 +139,12 @@ export function useIssueExternalObjects(issueId: string | null | undefined): Iss
           result[normalizedMention] = {
             providerKey: object.providerKey,
             objectType: object.objectType,
+            displayKey: object.displayKey,
+            iconKey: object.iconKey,
             statusCategory: object.statusCategory,
             liveness: object.liveness,
             statusLabel: object.statusLabel,
+            statusIconKey: object.statusIconKey,
             displayTitle: object.displayTitle,
           };
         }

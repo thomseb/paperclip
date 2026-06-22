@@ -398,9 +398,10 @@ capabilities: ["external.objects.detect", "external.objects.read"],
 ```
 
 Implement `onDetectExternalObjects()` to map sanitized URL candidates to
-`providerKey`, `objectType`, and provider-stable `externalId`. Implement
-`onResolveExternalObject()` to return a normalized snapshot with
-`statusCategory`, `statusTone`, `statusLabel`, board-safe `data`, and freshness
+`providerKey`, `objectType`, provider-stable `externalId`, and optional display
+metadata such as `displayKey`/`iconKey`. Implement `onResolveExternalObject()`
+to return a normalized snapshot with `statusCategory`, `statusTone`,
+`statusLabel`, optional `statusIconKey`, board-safe `data`, and freshness
 metadata. Slow or failing plugins are isolated: Paperclip logs the failure and
 continues saving the source issue, comment, or document.
 

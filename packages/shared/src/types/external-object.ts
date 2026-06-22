@@ -15,9 +15,12 @@ export interface ExternalObject {
   externalId: string;
   sanitizedCanonicalUrl: string | null;
   canonicalIdentityHash: string | null;
+  displayKey?: string | null;
+  iconKey?: string | null;
   displayTitle: string | null;
   statusKey: string | null;
   statusLabel: string | null;
+  statusIconKey?: string | null;
   statusCategory: ExternalObjectStatusCategory;
   statusTone: ExternalObjectStatusTone;
   liveness: ExternalObjectLivenessState;
@@ -68,7 +71,10 @@ export interface ExternalObjectSummaryItem {
   id: string;
   providerKey: string;
   objectType: string;
+  displayKey?: string | null;
+  iconKey?: string | null;
   displayTitle: string | null;
+  statusIconKey?: string | null;
   statusCategory: ExternalObjectStatusCategory;
   statusTone: ExternalObjectStatusTone;
   liveness: ExternalObjectLivenessState;

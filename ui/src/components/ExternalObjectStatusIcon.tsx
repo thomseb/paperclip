@@ -10,6 +10,7 @@ import {
 import {
   externalObjectCategoryLabel,
   externalObjectIconForCategory,
+  externalObjectIconForKey,
   externalObjectLivenessLabel,
 } from "../lib/external-objects";
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
@@ -18,6 +19,7 @@ import { cn } from "../lib/utils";
 interface ExternalObjectStatusIconProps {
   category: ExternalObjectStatusCategory;
   liveness: ExternalObjectLivenessState;
+  statusIconKey?: string | null;
   /** Optional override label used in `aria-label` (e.g. provider-specific copy). */
   label?: string | null;
   className?: string;
@@ -43,13 +45,14 @@ interface ExternalObjectStatusIconProps {
 export function ExternalObjectStatusIcon({
   category,
   liveness,
+  statusIconKey,
   label,
   className,
   sizeClassName = "h-3.5 w-3.5",
   inline = false,
 }: ExternalObjectStatusIconProps) {
   const reducedMotion = usePrefersReducedMotion();
-  const Icon = externalObjectIconForCategory(category);
+  const Icon = externalObjectIconForKey(statusIconKey) ?? externalObjectIconForCategory(category);
   const tone = externalObjectStatusIcon[category] ?? externalObjectStatusIconDefault;
   const livenessSuffix = liveness === "fresh" || liveness === "unknown"
     ? ""

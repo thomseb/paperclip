@@ -18,6 +18,8 @@ const plugin = definePlugin({
           providerKey: "mocktracker",
           objectType: "ticket",
           externalId: `MOCK-${id}`,
+          displayKey: "Mock Ticket",
+          iconKey: "circle-dot",
           displayTitle: `Mock ticket ${id}`,
           confidence: "exact" as const,
         }];
@@ -30,8 +32,11 @@ const plugin = definePlugin({
       ok: true as const,
       snapshot: {
         displayTitle: `Resolved ${params.externalId}`,
+        displayKey: "Mock Ticket",
+        iconKey: "circle-dot",
         statusKey: "ready",
         statusLabel: "Ready",
+        statusIconKey: "check-circle",
         statusCategory: "succeeded" as const,
         statusTone: "success" as const,
         isTerminal: false,

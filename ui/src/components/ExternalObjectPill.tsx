@@ -12,6 +12,7 @@ import {
 import {
   externalObjectCategoryLabel,
   externalObjectLivenessLabel,
+  externalObjectIconForKey,
   externalObjectProviderLabel,
   externalObjectTypeLabel,
 } from "../lib/external-objects";
@@ -20,10 +21,13 @@ import { cn } from "../lib/utils";
 export interface ExternalObjectPillData {
   providerKey: string | null;
   objectType: string | null;
+  displayKey?: string | null;
+  iconKey?: string | null;
   statusCategory: ExternalObjectStatusCategory;
   liveness: ExternalObjectLivenessState;
   displayTitle?: string | null;
   statusLabel?: string | null;
+  statusIconKey?: string | null;
   url?: string | null;
 }
 
@@ -59,8 +63,10 @@ export function ExternalObjectPill({
   const overlay = externalObjectLivenessOverlay[object.liveness] ?? "";
   const providerLabel = externalObjectProviderLabel(object.providerKey);
   const typeLabel = externalObjectTypeLabel(object.objectType);
+  const displayKey = object.displayKey?.trim() || `${providerLabel} ${typeLabel}`;
   const statusLabel = object.statusLabel ?? externalObjectCategoryLabel(object.statusCategory);
   const livenessLabel = externalObjectLivenessLabel(object.liveness);
+  const ProviderIcon = externalObjectIconForKey(object.iconKey);
   const ariaLabel = `${providerLabel} ${typeLabel} — ${statusLabel}${
     object.liveness === "fresh" || object.liveness === "unknown" ? "" : ` (${livenessLabel})`
   }${object.displayTitle ? `: ${object.displayTitle}` : ""}`;
@@ -68,7 +74,7 @@ export function ExternalObjectPill({
   const interactive = !inert && Boolean(object.url);
   const classNames = cn(
     "paperclip-mention-chip paperclip-mention-chip--external-object",
-    "inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs no-underline",
+    "inline-flex max-w-full items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs no-underline",
     // Tone is applied as text classes only — the border style comes from the
     // overlay (dashed for stale/auth/unreachable).
     tone.split(" ").filter((c) => c.startsWith("text-")).join(" "),
@@ -78,12 +84,24 @@ export function ExternalObjectPill({
     className,
   );
   const titleAttr = sourceSummary
-    ? `${object.displayTitle ?? `${providerLabel} ${typeLabel}`} — ${sourceSummary}`
-    : object.displayTitle ?? `${providerLabel} ${typeLabel}`;
+    ? `${object.displayTitle ?? displayKey} — ${sourceSummary}`
+    : object.displayTitle ?? displayKey;
   const labelText = children ?? (
     <>
-      <span className="font-medium">{providerLabel.toLowerCase()}</span>
-      <span className="text-muted-foreground/80">{typeLabel}</span>
+      <span className="font-medium">{displayKey}</span>
+      <span className="inline-flex items-center gap-0.5 rounded-full bg-background/70 px-1 text-[10px] font-medium">
+        <ExternalObjectStatusIcon
+          category={object.statusCategory}
+          liveness={object.liveness}
+          statusIconKey={object.statusIconKey}
+          sizeClassName="h-2.5 w-2.5"
+          label={`${providerLabel}: ${statusLabel}`}
+        />
+        <span>{statusLabel}</span>
+      </span>
+      {object.displayTitle ? (
+        <span className="max-w-[16rem] truncate text-muted-foreground/80">{object.displayTitle}</span>
+      ) : null}
     </>
   );
   const countSuffix = typeof sourceCount === "number" && sourceCount > 1 ? (
@@ -91,13 +109,18 @@ export function ExternalObjectPill({
   ) : null;
   const innerContent = (
     <>
-      <ExternalObjectStatusIcon
-        category={object.statusCategory}
-        liveness={object.liveness}
-        sizeClassName="h-3 w-3"
-        label={`${providerLabel}: ${statusLabel}`}
-      />
-      <span className="inline-flex items-center gap-1">
+      {ProviderIcon ? (
+        <ProviderIcon aria-hidden="true" className="h-3 w-3 shrink-0" />
+      ) : (
+        <ExternalObjectStatusIcon
+          category={object.statusCategory}
+          liveness={object.liveness}
+          statusIconKey={object.statusIconKey}
+          sizeClassName="h-3 w-3"
+          label={`${providerLabel}: ${statusLabel}`}
+        />
+      )}
+      <span className="inline-flex min-w-0 items-center gap-1">
         {labelText}
       </span>
       {countSuffix}

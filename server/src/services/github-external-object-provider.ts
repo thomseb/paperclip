@@ -105,6 +105,10 @@ function displayTitleFor(identity: GitHubObjectIdentity) {
   return `${identity.owner}/${identity.repo}#${identity.number}`;
 }
 
+function displayKeyFor(identity: Pick<GitHubObjectIdentity, "objectType">) {
+  return identity.objectType === "pull_request" ? "GitHub PR" : "GitHub Issue";
+}
+
 function retryAfterSeconds(response: Response) {
   const retryAfter = response.headers.get("retry-after");
   if (retryAfter && /^[0-9]+$/.test(retryAfter)) return Number(retryAfter);
@@ -163,9 +167,12 @@ function failureFromGitHubResponse(response: Response): ExternalObjectResolveRes
 
 function notFoundSnapshot(identity: GitHubObjectIdentity, etag: string | null): ExternalObjectResolverSnapshot {
   return {
+    displayKey: displayKeyFor(identity),
+    iconKey: "github",
     displayTitle: displayTitleFor(identity),
     statusKey: "not_found",
     statusLabel: "Not found",
+    statusIconKey: "archive",
     statusCategory: "archived",
     statusTone: "muted",
     isTerminal: true,
@@ -217,9 +224,18 @@ function pullRequestSnapshot(identity: GitHubObjectIdentity, body: Record<string
   }
 
   return {
+    displayKey: displayKeyFor(identity),
+    iconKey: "github",
     displayTitle: title ? `${displayTitleFor(identity)}: ${title}` : displayTitleFor(identity),
     statusKey,
     statusLabel,
+    statusIconKey: merged
+      ? "git-merge"
+      : state === "closed"
+      ? "x-circle"
+      : draft
+      ? "clock"
+      : "git-pull-request",
     statusCategory,
     statusTone,
     isTerminal,
@@ -257,9 +273,12 @@ function issueSnapshot(identity: GitHubObjectIdentity, body: Record<string, unkn
     : "Unknown";
 
   return {
+    displayKey: displayKeyFor(identity),
+    iconKey: "github",
     displayTitle: title ? `${displayTitleFor(identity)}: ${title}` : displayTitleFor(identity),
     statusKey,
     statusLabel,
+    statusIconKey: state === "closed" ? "circle" : "circle-dot",
     statusCategory: state === "open" ? "open" : state === "closed" ? "closed" : "unknown",
     statusTone: state === "open" ? "info" : state === "closed" ? "muted" : "neutral",
     isTerminal: state === "closed",
@@ -320,6 +339,8 @@ export function createGitHubExternalObjectProvider(
           providerKey: "github",
           objectType: identity.objectType,
           externalId: externalIdFor(identity),
+          displayKey: displayKeyFor(identity),
+          iconKey: "github",
           displayTitle: displayTitleFor(identity),
           confidence: "exact",
         }];

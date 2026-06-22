@@ -8,6 +8,9 @@ import {
   CircleDot,
   Clock,
   CloudOff,
+  GitMerge,
+  Github,
+  GitPullRequest,
   KeyRound,
   Loader2,
   XCircle,
@@ -43,6 +46,26 @@ export const externalObjectCategoryIconDefault: LucideIcon = CircleDashed;
 
 export function externalObjectIconForCategory(category: string): LucideIcon {
   return externalObjectCategoryIcon[category] ?? externalObjectCategoryIconDefault;
+}
+
+const EXTERNAL_OBJECT_ICON_KEYS: Record<string, LucideIcon> = {
+  archive: Archive,
+  check: CheckCircle2,
+  "check-circle": CheckCircle2,
+  circle: Circle,
+  "circle-dot": CircleDot,
+  clock: Clock,
+  github: Github,
+  "git-merge": GitMerge,
+  "git-pull-request": GitPullRequest,
+  key: KeyRound,
+  loader: Loader2,
+  "x-circle": XCircle,
+};
+
+export function externalObjectIconForKey(iconKey: string | null | undefined): LucideIcon | null {
+  if (!iconKey) return null;
+  return EXTERNAL_OBJECT_ICON_KEYS[iconKey] ?? null;
 }
 
 export function externalObjectIconForLiveness(liveness: string): LucideIcon | null {

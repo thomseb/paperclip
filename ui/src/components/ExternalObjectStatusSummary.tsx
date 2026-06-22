@@ -4,6 +4,7 @@ import {
   externalObjectCategoryLabel,
   externalObjectDominantCount,
   externalObjectIconForCategory,
+  externalObjectIconForKey,
 } from "../lib/external-objects";
 import { externalObjectStatusBadge, externalObjectStatusBadgeDefault } from "../lib/status-colors";
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
@@ -21,6 +22,10 @@ function dominantCategory(summary: ExternalObjectSummary): string {
   // server has already ranked them server-side.
   const match = summary.objects.find((object) => object.statusTone === summary.highestSeverity);
   return match?.statusCategory ?? "unknown";
+}
+
+function dominantObject(summary: ExternalObjectSummary) {
+  return summary.objects.find((object) => object.statusTone === summary.highestSeverity) ?? null;
 }
 
 function buildBreakdownTitle(summary: ExternalObjectSummary): string {
@@ -49,8 +54,9 @@ export function ExternalObjectStatusSummary({
   const total = summary?.total ?? 0;
   if (!summary || total === 0 || !tone) return null;
 
-  const category = dominantCategory(summary);
-  const Icon = externalObjectIconForCategory(category);
+  const object = dominantObject(summary);
+  const category = object?.statusCategory ?? dominantCategory(summary);
+  const Icon = externalObjectIconForKey(object?.statusIconKey) ?? externalObjectIconForCategory(category);
   const badgeClass = externalObjectStatusBadge[category] ?? externalObjectStatusBadgeDefault;
   const dominantCount = externalObjectDominantCount(summary);
   const title = buildBreakdownTitle(summary);

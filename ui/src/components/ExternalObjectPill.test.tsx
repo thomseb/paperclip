@@ -90,6 +90,29 @@ describe("ExternalObjectPill", () => {
     );
     expect(html).not.toContain("×");
   });
+
+  it("uses provider display keys, icons, visible status, and a truncated title when supplied", () => {
+    const html = renderToStaticMarkup(
+      <ExternalObjectPill
+        object={{
+          providerKey: "github",
+          objectType: "pull_request",
+          displayKey: "GitHub PR",
+          iconKey: "github",
+          statusCategory: "succeeded",
+          statusIconKey: "git-merge",
+          liveness: "fresh",
+          statusLabel: "Merged",
+          displayTitle: "acme/web#241: Add rich object presentation metadata",
+          url: "https://github.com/acme/web/pull/241",
+        }}
+      />,
+    );
+    expect(html).toContain("GitHub PR");
+    expect(html).toContain("Merged");
+    expect(html).toContain("acme/web#241: Add rich object presentation metadata");
+    expect(html).toContain('aria-label="GitHub pull request — Merged: acme/web#241: Add rich object presentation metadata"');
+  });
 });
 
 describe("ExternalObjectStatusSummary", () => {

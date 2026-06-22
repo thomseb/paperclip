@@ -5,6 +5,7 @@ import {
   externalObjectDominantCount,
   externalObjectFallbackTone,
   externalObjectIconForCategory,
+  externalObjectIconForKey,
   externalObjectLivenessLabel,
   externalObjectProviderLabel,
   externalObjectToneSeverity,
@@ -79,6 +80,12 @@ describe("external-objects helpers", () => {
     expect(externalObjectIconForCategory("auth_required").displayName ?? "").toMatch(/KeyRound|Key/);
     expect(externalObjectIconForCategory("unreachable").displayName ?? "").toMatch(/CloudOff|Cloud/);
     expect(externalObjectIconForCategory("running").displayName ?? "").toMatch(/Loader2|Loader/);
+  });
+
+  it("maps provider-controlled icon keys through host-owned icons", () => {
+    expect(externalObjectIconForKey("github")?.displayName ?? "").toMatch(/Github/i);
+    expect(externalObjectIconForKey("git-pull-request")?.displayName ?? "").toMatch(/GitPullRequest/i);
+    expect(externalObjectIconForKey("unknown-provider-icon")).toBeNull();
   });
 
   it("sorts items by severity first, preserving insertion order within a tone", () => {

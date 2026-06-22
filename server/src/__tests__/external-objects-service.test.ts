@@ -182,12 +182,16 @@ describe("GitHub external object provider", () => {
         providerKey: "github",
         objectType: "pull_request",
         externalId: "acme/app#pull/42",
+        displayKey: "GitHub PR",
+        iconKey: "github",
         displayTitle: "Acme/App#42",
       }),
       expect.objectContaining({
         providerKey: "github",
         objectType: "issue",
         externalId: "acme/app#issues/7",
+        displayKey: "GitHub Issue",
+        iconKey: "github",
         displayTitle: "Acme/App#7",
       }),
     ]);
@@ -198,22 +202,22 @@ describe("GitHub external object provider", () => {
     [
       "open",
       { state: "open", draft: false, merged: false, title: "Ship it", updated_at: "2026-04-24T01:02:03Z" },
-      { statusKey: "open", statusLabel: "Open", statusCategory: "open", statusTone: "info", isTerminal: false },
+      { statusKey: "open", statusLabel: "Open", statusIconKey: "git-pull-request", statusCategory: "open", statusTone: "info", isTerminal: false },
     ],
     [
       "draft",
       { state: "open", draft: true, merged: false, title: "WIP", updated_at: "2026-04-24T01:02:03Z" },
-      { statusKey: "draft", statusLabel: "Draft", statusCategory: "waiting", statusTone: "warning", isTerminal: false },
+      { statusKey: "draft", statusLabel: "Draft", statusIconKey: "clock", statusCategory: "waiting", statusTone: "warning", isTerminal: false },
     ],
     [
       "closed",
       { state: "closed", draft: false, merged: false, title: "Closed PR", updated_at: "2026-04-24T01:02:03Z" },
-      { statusKey: "closed", statusLabel: "Closed", statusCategory: "closed", statusTone: "muted", isTerminal: true },
+      { statusKey: "closed", statusLabel: "Closed", statusIconKey: "x-circle", statusCategory: "closed", statusTone: "muted", isTerminal: true },
     ],
     [
       "merged",
       { state: "closed", draft: false, merged: true, title: "Merged PR", updated_at: "2026-04-24T01:02:03Z" },
-      { statusKey: "merged", statusLabel: "Merged", statusCategory: "succeeded", statusTone: "success", isTerminal: true },
+      { statusKey: "merged", statusLabel: "Merged", statusIconKey: "git-merge", statusCategory: "succeeded", statusTone: "success", isTerminal: true },
     ],
   ])("resolves a %s pull request snapshot", async (_name, body, expected) => {
     const fetch = vi.fn(async () => response(body));
@@ -235,6 +239,8 @@ describe("GitHub external object provider", () => {
       ok: true,
       snapshot: expect.objectContaining({
         ...expected,
+        displayKey: "GitHub PR",
+        iconKey: "github",
         displayTitle: expect.stringContaining(String(body.title)),
         remoteVersion: "2026-04-24T01:02:03Z",
         etag: '"etag-1"',
@@ -253,12 +259,12 @@ describe("GitHub external object provider", () => {
     [
       "open",
       { state: "open", title: "Issue", state_reason: null, updated_at: "2026-04-24T01:02:03Z" },
-      { statusKey: "open", statusLabel: "Open", statusCategory: "open", statusTone: "info", isTerminal: false },
+      { statusKey: "open", statusLabel: "Open", statusIconKey: "circle-dot", statusCategory: "open", statusTone: "info", isTerminal: false },
     ],
     [
       "closed",
       { state: "closed", title: "Issue", state_reason: "completed", updated_at: "2026-04-24T01:02:03Z" },
-      { statusKey: "closed_completed", statusLabel: "Closed: completed", statusCategory: "closed", statusTone: "muted", isTerminal: true },
+      { statusKey: "closed_completed", statusLabel: "Closed: completed", statusIconKey: "circle", statusCategory: "closed", statusTone: "muted", isTerminal: true },
     ],
   ])("resolves a %s issue snapshot", async (_name, body, expected) => {
     const fetch = vi.fn(async () => response(body));
@@ -275,6 +281,8 @@ describe("GitHub external object provider", () => {
       ok: true,
       snapshot: expect.objectContaining({
         ...expected,
+        displayKey: "GitHub Issue",
+        iconKey: "github",
         data: expect.objectContaining({
           provider: "github",
           owner: "acme",
@@ -322,7 +330,7 @@ describe("GitHub external object provider", () => {
     [
       "not-found",
       new Response("", { status: 404, headers: { etag: '"missing"' } }),
-      { ok: true, snapshot: expect.objectContaining({ statusKey: "not_found", statusCategory: "archived", statusTone: "muted" }) },
+      { ok: true, snapshot: expect.objectContaining({ displayKey: "GitHub PR", iconKey: "github", statusKey: "not_found", statusIconKey: "archive", statusCategory: "archived", statusTone: "muted" }) },
     ],
   ])("maps %s responses to provider-safe results", async (_name, githubResponse, expected) => {
     const provider = createGitHubExternalObjectProvider({} as any, {
@@ -548,6 +556,8 @@ describeEmbeddedPostgres("externalObjectService", () => {
               providerKey: "mocktracker",
               objectType: "ticket",
               externalId: "MOCK-123",
+              displayKey: "Mock Ticket",
+              iconKey: "circle-dot",
               displayTitle: "Mock ticket 123",
               confidence: "exact",
             })),
@@ -557,9 +567,12 @@ describeEmbeddedPostgres("externalObjectService", () => {
           return {
             ok: true,
             snapshot: {
+              displayKey: "Mock Ticket",
+              iconKey: "circle-dot",
               displayTitle: `Resolved ${params.externalId}`,
               statusKey: "ready",
               statusLabel: "Ready",
+              statusIconKey: "check-circle",
               statusCategory: "succeeded",
               statusTone: "success",
               ttlSeconds: 300,
@@ -579,6 +592,8 @@ describeEmbeddedPostgres("externalObjectService", () => {
       providerKey: "mocktracker",
       objectType: "ticket",
       externalId: "MOCK-123",
+      displayKey: "Mock Ticket",
+      iconKey: "circle-dot",
       pluginId: plugin!.id,
       sanitizedCanonicalUrl: "https://mock.example/tickets/123",
     });
@@ -586,6 +601,10 @@ describeEmbeddedPostgres("externalObjectService", () => {
 
     const refreshed = await svc.refreshObject(object.id, { companyId, force: true });
     expect(refreshed.object).toMatchObject({
+      displayKey: "Mock Ticket",
+      iconKey: "circle-dot",
+      displayTitle: "Resolved MOCK-123",
+      statusIconKey: "check-circle",
       statusCategory: "succeeded",
       statusTone: "success",
       liveness: "fresh",

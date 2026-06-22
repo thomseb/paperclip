@@ -35,6 +35,8 @@ export interface ExternalObjectDetection {
   providerKey: string;
   objectType: string;
   externalId: string;
+  displayKey?: string | null;
+  iconKey?: string | null;
   displayTitle?: string | null;
   confidence?: ExternalObjectMentionConfidence;
   pluginId?: string | null;
@@ -50,9 +52,12 @@ export interface ExternalObjectDetector {
 }
 
 export interface ExternalObjectResolverSnapshot {
+  displayKey?: string | null;
+  iconKey?: string | null;
   displayTitle?: string | null;
   statusKey?: string | null;
   statusLabel?: string | null;
+  statusIconKey?: string | null;
   statusCategory: ExternalObjectStatusCategory;
   statusTone: ExternalObjectStatusTone;
   isTerminal?: boolean;
@@ -126,6 +131,7 @@ function objectChanged(before: ExternalObjectRecord, after: ExternalObjectRecord
   return (
     before.statusKey !== after.statusKey ||
     before.statusLabel !== after.statusLabel ||
+    before.statusIconKey !== after.statusIconKey ||
     before.statusCategory !== after.statusCategory ||
     before.statusTone !== after.statusTone ||
     before.isTerminal !== after.isTerminal
@@ -217,9 +223,12 @@ function objectSnapshot(object: ExternalObjectRecord): PluginExternalObjectRecor
     externalId: object.externalId,
     sanitizedCanonicalUrl: object.sanitizedCanonicalUrl,
     canonicalIdentityHash: object.canonicalIdentityHash,
+    displayKey: object.displayKey,
+    iconKey: object.iconKey,
     displayTitle: object.displayTitle,
     statusKey: object.statusKey,
     statusLabel: object.statusLabel,
+    statusIconKey: object.statusIconKey,
     statusCategory: object.statusCategory,
     statusTone: object.statusTone,
     liveness: object.liveness,
@@ -285,6 +294,8 @@ function createPluginProviderDetector(
               providerKey: detection.providerKey,
               objectType: detection.objectType,
               externalId: detection.externalId,
+              displayKey: detection.displayKey,
+              iconKey: detection.iconKey,
               displayTitle: detection.displayTitle,
               confidence: detection.confidence ?? "exact",
               pluginId: provider.id,
@@ -399,6 +410,8 @@ export function externalObjectService(
       externalId: detection.externalId,
       sanitizedCanonicalUrl: canonical.sanitizedCanonicalUrl,
       canonicalIdentityHash: canonical.canonicalIdentityHash,
+      displayKey: detection.displayKey ?? null,
+      iconKey: detection.iconKey ?? null,
       displayTitle: detection.displayTitle ?? canonical.sanitizedDisplayUrl,
       updatedAt: now,
     };
@@ -415,6 +428,8 @@ export function externalObjectService(
         set: {
           sanitizedCanonicalUrl: values.sanitizedCanonicalUrl,
           canonicalIdentityHash: values.canonicalIdentityHash,
+          displayKey: values.displayKey,
+          iconKey: values.iconKey,
           displayTitle: values.displayTitle,
           updatedAt: now,
         },
@@ -663,7 +678,10 @@ export function externalObjectService(
         id: object.id,
         providerKey: object.providerKey,
         objectType: object.objectType,
+        displayKey: object.displayKey,
+        iconKey: object.iconKey,
         displayTitle: object.displayTitle,
+        statusIconKey: object.statusIconKey,
         statusCategory: object.statusCategory,
         statusTone: object.statusTone,
         liveness: object.liveness,
@@ -796,9 +814,12 @@ export function externalObjectService(
 
     const snapshot = result.snapshot;
     const patch = {
+      displayKey: snapshot.displayKey ?? object.displayKey,
+      iconKey: snapshot.iconKey ?? object.iconKey,
       displayTitle: snapshot.displayTitle ?? object.displayTitle,
       statusKey: snapshot.statusKey ?? object.statusKey,
       statusLabel: snapshot.statusLabel ?? object.statusLabel,
+      statusIconKey: snapshot.statusIconKey ?? object.statusIconKey,
       statusCategory: snapshot.statusCategory,
       statusTone: snapshot.statusTone,
       isTerminal: snapshot.isTerminal ?? object.isTerminal,
