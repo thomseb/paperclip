@@ -4544,6 +4544,8 @@ registerCurrentRoute({
 for (const route of [
   ["get", "/api/routines/{id}/revisions", "List routine revisions"],
   ["post", "/api/routines/{id}/revisions/{revisionId}/restore", "Restore a routine revision"],
+  ["get", "/api/routines/{id}/description/annotations", "List routine description annotation threads"],
+  ["get", "/api/routines/{id}/description/annotations/{threadId}", "Get a routine description annotation thread"],
 ] as const) {
   registerCurrentRoute({
     method: route[0],
@@ -4552,6 +4554,32 @@ for (const route of [
     summary: route[2],
   });
 }
+
+registerCurrentRoute({
+  method: "post",
+  path: "/api/routines/{id}/description/annotations",
+  tags: ["routines"],
+  summary: "Create a routine description annotation thread",
+  body: createDocumentAnnotationThreadSchema,
+  responses: { 201: r.ok(), 400: r.badRequest, 401: r.unauthorized, 404: r.notFound },
+});
+
+registerCurrentRoute({
+  method: "post",
+  path: "/api/routines/{id}/description/annotations/{threadId}/comments",
+  tags: ["routines"],
+  summary: "Add a routine description annotation comment",
+  body: createDocumentAnnotationCommentSchema,
+  responses: { 201: r.ok(), 400: r.badRequest, 401: r.unauthorized, 404: r.notFound },
+});
+
+registerCurrentRoute({
+  method: "patch",
+  path: "/api/routines/{id}/description/annotations/{threadId}",
+  tags: ["routines"],
+  summary: "Update a routine description annotation thread",
+  body: updateDocumentAnnotationThreadSchema,
+});
 
 const pluginLocalFolderRequestSchema = z.object({
   path: z.string().min(1),
