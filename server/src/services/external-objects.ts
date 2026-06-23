@@ -515,58 +515,64 @@ export function externalObjectService(
   }
 
   async function syncComment(commentId: string, dbOrTx: any = db) {
-    if (!(await isEnabled())) return;
-    const comment = await dbOrTx
-      .select({
-        id: issueComments.id,
-        companyId: issueComments.companyId,
-        issueId: issueComments.issueId,
-        body: issueComments.body,
-      })
-      .from(issueComments)
-      .where(eq(issueComments.id, commentId))
-      .then((rows: Array<{ id: string; companyId: string; issueId: string; body: string }>) => rows[0] ?? null);
-    if (!comment) throw notFound("Issue comment not found");
-    await replaceSourceMentions({
-      companyId: comment.companyId,
-      sourceIssueId: comment.issueId,
-      sourceKind: "comment",
-      sourceRecordId: comment.id,
-      documentKey: null,
-      propertyKey: null,
-      text: comment.body,
-    }, dbOrTx);
+    const runSync = async (tx: any) => {
+      if (!(await isEnabled())) return;
+      const comment = await tx
+        .select({
+          id: issueComments.id,
+          companyId: issueComments.companyId,
+          issueId: issueComments.issueId,
+          body: issueComments.body,
+        })
+        .from(issueComments)
+        .where(eq(issueComments.id, commentId))
+        .then((rows: Array<{ id: string; companyId: string; issueId: string; body: string }>) => rows[0] ?? null);
+      if (!comment) throw notFound("Issue comment not found");
+      await replaceSourceMentions({
+        companyId: comment.companyId,
+        sourceIssueId: comment.issueId,
+        sourceKind: "comment",
+        sourceRecordId: comment.id,
+        documentKey: null,
+        propertyKey: null,
+        text: comment.body,
+      }, tx);
+    };
+    return dbOrTx === db ? db.transaction(runSync) : runSync(dbOrTx);
   }
 
   async function syncDocument(documentId: string, dbOrTx: any = db) {
-    if (!(await isEnabled())) return;
-    const document = await dbOrTx
-      .select({
-        documentId: documents.id,
-        companyId: documents.companyId,
-        issueId: issueDocuments.issueId,
-        key: issueDocuments.key,
-        body: documents.latestBody,
-      })
-      .from(issueDocuments)
-      .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
-      .where(eq(documents.id, documentId))
-      .then((rows: Array<{ documentId: string; companyId: string; issueId: string; key: string; body: string }>) => rows[0] ?? null);
-    if (!document) {
-      await dbOrTx
-        .delete(externalObjectMentions)
-        .where(and(eq(externalObjectMentions.sourceKind, "document"), eq(externalObjectMentions.sourceRecordId, documentId)));
-      return;
-    }
-    await replaceSourceMentions({
-      companyId: document.companyId,
-      sourceIssueId: document.issueId,
-      sourceKind: "document",
-      sourceRecordId: document.documentId,
-      documentKey: document.key,
-      propertyKey: null,
-      text: document.body,
-    }, dbOrTx);
+    const runSync = async (tx: any) => {
+      if (!(await isEnabled())) return;
+      const document = await tx
+        .select({
+          documentId: documents.id,
+          companyId: documents.companyId,
+          issueId: issueDocuments.issueId,
+          key: issueDocuments.key,
+          body: documents.latestBody,
+        })
+        .from(issueDocuments)
+        .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
+        .where(eq(documents.id, documentId))
+        .then((rows: Array<{ documentId: string; companyId: string; issueId: string; key: string; body: string }>) => rows[0] ?? null);
+      if (!document) {
+        await tx
+          .delete(externalObjectMentions)
+          .where(and(eq(externalObjectMentions.sourceKind, "document"), eq(externalObjectMentions.sourceRecordId, documentId)));
+        return;
+      }
+      await replaceSourceMentions({
+        companyId: document.companyId,
+        sourceIssueId: document.issueId,
+        sourceKind: "document",
+        sourceRecordId: document.documentId,
+        documentKey: document.key,
+        propertyKey: null,
+        text: document.body,
+      }, tx);
+    };
+    return dbOrTx === db ? db.transaction(runSync) : runSync(dbOrTx);
   }
 
   async function safeSync(label: string, fn: () => Promise<void>) {

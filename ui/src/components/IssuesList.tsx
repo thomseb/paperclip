@@ -1006,6 +1006,9 @@ export function IssuesList({
     externalObjectSummaryByIssueId,
     externalObjectSummariesReady: externalObjectSummariesReady && !externalObjectSummariesLoading,
   }), [externalObjectSummariesLoading, externalObjectSummariesReady, externalObjectSummaryByIssueId, issueFilterWorkspaceContext]);
+  const externalObjectFilterLoading = hasExternalObjectStatusFilters
+    && externalObjectSummariesLoading
+    && !externalObjectSummariesReady;
 
   const filtered = useMemo(() => {
     const filteredByControls = applyIssueFilters(
@@ -1597,7 +1600,7 @@ export function IssuesList({
         </div>
       </div>
 
-      {isLoading && <PageSkeleton variant="issues-list" />}
+      {(isLoading || externalObjectFilterLoading) && <PageSkeleton variant="issues-list" />}
       {error && <p className="text-sm text-destructive">{error.message}</p>}
       {!searchWithinLoadedIssues && normalizedIssueSearch.length > 0 && searchedIssues.length === ISSUE_SEARCH_RESULT_LIMIT && (
         <p className="text-xs text-muted-foreground">
@@ -1609,7 +1612,7 @@ export function IssuesList({
           Some board columns are showing up to {ISSUE_BOARD_COLUMN_RESULT_LIMIT} tasks. Refine filters or search to reveal the rest.
         </p>
       )}
-      {!isLoading && filtered.length === 0 && viewState.viewMode === "list" && (
+      {!isLoading && !externalObjectFilterLoading && filtered.length === 0 && viewState.viewMode === "list" && (
         <EmptyState
           icon={CircleDot}
           message="No tasks match the current filters or search."
