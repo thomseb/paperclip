@@ -3906,6 +3906,7 @@ export function issueRoutes(
         entityType: "issue",
         entityId: issue.id,
         details: {
+          key: thread.documentKey,
           documentKey: thread.documentKey,
           documentId: thread.documentId,
           threadId: thread.id,
@@ -3990,6 +3991,7 @@ export function issueRoutes(
         entityType: "issue",
         entityId: issue.id,
         details: {
+          key: keyParsed.data,
           documentKey: keyParsed.data,
           threadId: comment.threadId,
           commentId: comment.id,
@@ -4043,6 +4045,7 @@ export function issueRoutes(
         entityType: "issue",
         entityId: issue.id,
         details: {
+          key: thread.documentKey,
           documentKey: thread.documentKey,
           documentId: thread.documentId,
           threadId: thread.id,
