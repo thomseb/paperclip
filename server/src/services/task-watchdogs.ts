@@ -329,6 +329,7 @@ function stableStopFingerprint(input: {
 
 function stableProofObligationFingerprint(input: {
   companyId: string;
+  watchdogId: string;
   watchedIssueId: string;
   stopFingerprint: string;
   leaves: TaskWatchdogStoppedLeaf[];
@@ -336,6 +337,7 @@ function stableProofObligationFingerprint(input: {
   const payload = JSON.stringify({
     version: 1,
     companyId: input.companyId,
+    watchdogId: input.watchdogId,
     watchedIssueId: input.watchedIssueId,
     stopFingerprint: input.stopFingerprint,
     targets: input.leaves.map((leaf) => ({
@@ -492,6 +494,7 @@ export function classifyTaskWatchdogSubtree(input: TaskWatchdogClassifierInput):
   });
   const proofObligationFingerprint = stableProofObligationFingerprint({
     companyId: input.watchdog.companyId,
+    watchdogId: input.watchdog.id,
     watchedIssueId: input.watchdog.issueId,
     stopFingerprint,
     leaves,
@@ -1163,7 +1166,7 @@ export function taskWatchdogService(db: Db, deps: TaskWatchdogServiceDeps = {}) 
         eq(issueRelations.companyId, companyId),
         eq(issueRelations.type, "blocks"),
         eq(issueRelations.relatedIssueId, issueId),
-        sql`${blocker.status} <> 'done'`,
+        sql`${blocker.status} not in ('done', 'cancelled')`,
         isNull(blocker.hiddenAt),
       ))
       .limit(1)

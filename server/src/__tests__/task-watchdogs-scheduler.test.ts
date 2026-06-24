@@ -439,6 +439,38 @@ describeEmbeddedPostgres("task watchdog scheduler", () => {
     expect(outcomes.map((outcome) => outcome.outcome).sort()).toEqual(["deferred", "failed"]);
   });
 
+  it("does not defer a blocked watchdog issue when its only blocker was cancelled", async () => {
+    const companyId = await seedCompany();
+    const sourceId = await seedIssue(companyId, { identifier: "WDOG-CANCELLED-BLOCKER", status: "blocked" });
+    const blockerId = await seedIssue(companyId, { identifier: "WDOG-CANCELLED", status: "cancelled" });
+    const agentId = await seedAgent(companyId);
+    await seedWatchdog(companyId, sourceId, agentId);
+    const { service } = createService();
+
+    await service.reconcileTaskWatchdogs({ companyId });
+    const [watchdog] = await db.select().from(issueWatchdogs).where(eq(issueWatchdogs.issueId, sourceId));
+    const watchdogIssueId = watchdog!.watchdogIssueId!;
+    await db.update(issues).set({ status: "blocked", updatedAt: new Date() }).where(eq(issues.id, watchdogIssueId));
+    await db.insert(issueRelations).values({
+      companyId,
+      issueId: blockerId,
+      relatedIssueId: watchdogIssueId,
+      type: "blocks",
+    });
+
+    await service.reconcileTaskWatchdogs({ companyId });
+
+    const outcomes = await db
+      .select()
+      .from(issueWatchdogProofOutcomes)
+      .where(eq(issueWatchdogProofOutcomes.watchdogId, watchdog!.id));
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0]).toMatchObject({
+      outcome: "failed",
+      redactedDetails: expect.objectContaining({ hasUnresolvedBlocker: false }),
+    });
+  });
+
   it("does not let an old terminal watchdog review mark a newer observed fingerprint reviewed", async () => {
     const companyId = await seedCompany();
     const sourceId = await seedIssue(companyId, { identifier: "WDOG-STALE", status: "done" });

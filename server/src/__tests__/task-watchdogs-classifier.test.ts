@@ -243,6 +243,25 @@ describe("task watchdog subtree classifier", () => {
     expect(resolved.proofObligationFingerprint).not.toBe(blocked.proofObligationFingerprint);
   });
 
+  it("includes the watchdog id in proof obligation fingerprints", () => {
+    const first = classify({ issues: [issue({ status: "done" })] });
+    const second = classify({
+      watchdog: {
+        id: "watchdog-config-2",
+        companyId,
+        issueId: sourceId,
+        lastReviewedFingerprint: null,
+      },
+      issues: [issue({ status: "done" })],
+    });
+
+    expect(first.state).toBe("stopped");
+    expect(second.state).toBe("stopped");
+    if (first.state !== "stopped" || second.state !== "stopped") return;
+    expect(second.stopFingerprint).toBe(first.stopFingerprint);
+    expect(second.proofObligationFingerprint).not.toBe(first.proofObligationFingerprint);
+  });
+
   it("suppresses a repeated proof obligation when a typed outcome already exists", () => {
     const stopped = classify({ issues: [issue({ status: "done" })] });
     expect(stopped.state).toBe("stopped");

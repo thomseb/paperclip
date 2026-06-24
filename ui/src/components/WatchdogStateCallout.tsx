@@ -68,6 +68,7 @@ function issueLink(id: string, identifier: string | null | undefined): string {
 
 function outcomeStatement(
   outcome: IssueWatchdogProofOutcomeSummary,
+  context: { hasOpenBlockers?: boolean; hasMonitor?: boolean } = {},
 ): string {
   const classification = outcome.resultClassification;
   switch (outcome.outcome) {
@@ -76,7 +77,13 @@ function outcomeStatement(
     case "restored":
       return "Restored live work inside the watched subtree and woke the responsible owner.";
     case "deferred":
-      return `Deferred verification — the proof obligation can't be checked yet (${classification}). It will re-check once, automatically, when the blocker resolves.`;
+      if (context.hasOpenBlockers) {
+        return `Deferred verification — the proof obligation can't be checked yet (${classification}). It will re-check once, automatically, when the blocker resolves.`;
+      }
+      if (context.hasMonitor) {
+        return `Deferred verification — the proof obligation can't be checked yet (${classification}). A scheduled follow-up will re-check it.`;
+      }
+      return `Deferred verification — the proof obligation can't be checked yet (${classification}). The waiting path must complete before verification can resume.`;
     case "failed":
       return `The proof obligation failed (${classification}). A recovery action was opened with the owner and next step.`;
     case "dismissed":
@@ -219,6 +226,8 @@ export function WatchdogStateCallout({
   const proof = data.latestProofOutcome ?? null;
   const wdAgent = agentName(data.watchdogAgentId, agentMap);
   const watchdogTaskHref = data.watchdogIssueId ? `/issues/${data.watchdogIssueId}` : null;
+  const openBlockers = (blockers ?? []).filter((b) => b.status !== "done" && b.status !== "cancelled");
+  const hasMonitor = !!monitorNextCheckAt;
 
   // State 6 — armed but no review yet
   if (!proof) {
@@ -272,7 +281,7 @@ export function WatchdogStateCallout({
           </>
         }
         badge={<WatchdogOutcomeBadge outcome={proof.outcome} />}
-        statement={outcomeStatement(proof)}
+        statement={outcomeStatement(proof, { hasOpenBlockers: openBlockers.length > 0, hasMonitor })}
       />
       <dl
         className={cn(
@@ -332,9 +341,8 @@ export function WatchdogStateCallout({
 
         {proof.outcome === "deferred" ? (
           <OutstandingDeferred
-            blockers={blockers}
+            openBlockers={openBlockers}
             monitorNextCheckAt={monitorNextCheckAt}
-            watchdogTaskHref={watchdogTaskHref}
           />
         ) : null}
 
@@ -355,24 +363,21 @@ export function WatchdogStateCallout({
 }
 
 function OutstandingDeferred({
-  blockers,
+  openBlockers,
   monitorNextCheckAt,
-  watchdogTaskHref,
 }: {
-  blockers?: IssueRelationIssueSummary[];
+  openBlockers: IssueRelationIssueSummary[];
   monitorNextCheckAt?: Date | string | null;
-  watchdogTaskHref: string | null;
 }) {
-  const open = (blockers ?? []).filter((b) => b.status !== "done" && b.status !== "cancelled");
   const hasMonitor = !!monitorNextCheckAt;
-  if (open.length === 0 && !hasMonitor && !watchdogTaskHref) return null;
+  if (openBlockers.length === 0 && !hasMonitor) return null;
   return (
     <MetaRow label="Outstanding">
       <div className="rounded-md border border-amber-300/60 bg-background/50 px-2 py-1.5 dark:border-amber-500/30">
-        {open.length > 0 ? (
+        {openBlockers.length > 0 ? (
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-[11px] text-muted-foreground">Blocked by</span>
-            {open.map((b) => (
+            {openBlockers.map((b) => (
               <Link
                 key={b.id}
                 to={issueLink(b.id, b.identifier)}

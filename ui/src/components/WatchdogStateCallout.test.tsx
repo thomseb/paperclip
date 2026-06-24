@@ -162,6 +162,15 @@ describe("WatchdogStateCallout", () => {
     expect(container.textContent).toContain("PAP-500");
   });
 
+  it("does not show a phantom outstanding blocker section for deferred review paths", async () => {
+    getWatchdogMock.mockResolvedValue(watchdogWith("deferred"));
+    renderCallout();
+    await waitForText("Deferred");
+    expect(container.textContent).toContain("waiting path must complete");
+    expect(container.textContent).not.toContain("Outstanding");
+    expect(container.textContent).not.toContain("next check on blocker resolve");
+  });
+
   it("shows the failed outcome with the recovery action owner and next step", async () => {
     getWatchdogMock.mockResolvedValue(watchdogWith("failed"));
     const recoveryAction = {
