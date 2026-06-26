@@ -318,6 +318,10 @@ fi
 prefix="$(join_prefix "$default_prefix" "$slug")"
 target_exists=0
 
+if [[ "$update" == "1" ]]; then
+  assert_update_ownership "$source_dir" "$bucket" "$prefix"
+fi
+
 if [[ "$dry_run" == "0" ]]; then
   if object_exists "$bucket" "$prefix"; then
     target_exists=1
@@ -342,10 +346,6 @@ if [[ "$dry_run" == "0" ]]; then
     done
 
     [[ "$target_exists" == "0" ]] || die "could not find an unused generated slug after 5 attempts"
-  fi
-
-  if [[ "$target_exists" == "1" && "$update" == "1" ]]; then
-    assert_update_ownership "$source_dir" "$bucket" "$prefix"
   fi
 fi
 
@@ -373,10 +373,10 @@ aws_cli s3 sync "$source_dir/" "s3://$bucket/$prefix" \
   --cache-control 'public,max-age=60' \
   --only-show-errors
 
-curl -fsSIL --max-time 20 "$url" >/dev/null
-
 source_hash="$(compute_source_hash "$source_dir")"
 write_state "$source_dir" "$bucket" "$prefix" "$slug" "$url" "$base_url" "$source_hash"
+
+curl -fsSIL --max-time 20 "$url" >/dev/null
 
 cat <<EOF
 paperclip-page published
