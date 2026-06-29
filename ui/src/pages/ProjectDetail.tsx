@@ -33,10 +33,11 @@ import { PluginLauncherOutlet } from "@/plugins/launchers";
 import { PluginSlotMount, PluginSlotOutlet, usePluginSlots } from "@/plugins/slots";
 import { Copy, FolderOpen, GitBranch, Loader2, Play, Square } from "lucide-react";
 import { IssuesQuicklook } from "../components/IssuesQuicklook";
+import { ProjectDocuments } from "../components/ProjectDocuments";
 
 /* ── Top-level tab types ── */
 
-type ProjectBaseTab = "overview" | "list" | "workspaces" | "configuration" | "budget";
+type ProjectBaseTab = "overview" | "list" | "workspaces" | "configuration" | "budget" | "documents";
 type ProjectPluginTab = `plugin:${string}`;
 type ProjectTab = ProjectBaseTab | ProjectPluginTab;
 
@@ -54,6 +55,7 @@ function resolveProjectTab(pathname: string, projectId: string): ProjectTab | nu
   if (tab === "budget") return "budget";
   if (tab === "issues") return "list";
   if (tab === "workspaces") return "workspaces";
+  if (tab === "documents") return "documents";
   return null;
 }
 
@@ -621,6 +623,10 @@ export function ProjectDetail() {
       navigate(`/projects/${canonicalProjectRef}/budget`, { replace: true });
       return;
     }
+    if (activeTab === "documents") {
+      navigate(`/projects/${canonicalProjectRef}/documents`, { replace: true });
+      return;
+    }
     if (activeTab === "workspaces") {
       navigate(`/projects/${canonicalProjectRef}/workspaces`, { replace: true });
       return;
@@ -787,6 +793,8 @@ export function ProjectDetail() {
       navigate(`/projects/${canonicalProjectRef}/budget`);
     } else if (tab === "configuration") {
       navigate(`/projects/${canonicalProjectRef}/configuration`);
+    } else if (tab === "documents") {
+      navigate(`/projects/${canonicalProjectRef}/documents`);
     } else {
       navigate(`/projects/${canonicalProjectRef}/issues`);
     }
@@ -854,6 +862,7 @@ export function ProjectDetail() {
             { value: "list", label: "Issues" },
             { value: "overview", label: "Overview" },
             ...(showWorkspacesTab ? [{ value: "workspaces", label: "Workspaces" }] : []),
+            { value: "documents", label: "Documents" },
             { value: "configuration", label: "Configuration" },
             { value: "budget", label: "Budget" },
             ...pluginTabItems.map((item) => ({
@@ -921,6 +930,10 @@ export function ProjectDetail() {
             onSave={(amount) => budgetMutation.mutate(amount)}
           />
         </div>
+      ) : null}
+
+      {activeTab === "documents" ? (
+        <ProjectDocuments projectId={project.id} />
       ) : null}
 
       {activePluginTab && (

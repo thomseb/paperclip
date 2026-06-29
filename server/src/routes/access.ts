@@ -105,18 +105,12 @@ function buildCliAuthApprovalPath(challengeId: string, token: string) {
 
 function readSkillMarkdown(skillName: string): string | null {
   const normalized = skillName.trim().toLowerCase();
-  if (
-    normalized !== "paperclip" &&
-    normalized !== "paperclip-create-agent" &&
-    normalized !== "paperclip-create-plugin" &&
-    normalized !== "para-memory-files"
-  )
-    return null;
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
     path.resolve(moduleDir, "../../skills", normalized, "SKILL.md"), // published: dist/routes/ -> <pkg>/skills/
     path.resolve(process.cwd(), "skills", normalized, "SKILL.md"), // cwd (e.g. monorepo root)
-    path.resolve(moduleDir, "../../../skills", normalized, "SKILL.md") // dev: src/routes/ -> repo root/skills/
+    path.resolve(moduleDir, "../../../skills", normalized, "SKILL.md"), // dev: src/routes/ -> repo root/skills/
+    path.resolve(moduleDir, "../../../../skills", normalized, "SKILL.md") // project-root superpowers skills
   ];
   for (const skillPath of candidates) {
     try {
@@ -187,8 +181,14 @@ function listAvailableSkills(): AvailableSkill[] {
     } catch { /* skip */ }
   }
 
-  const skills: AvailableSkill[] = [];
+  // Also discover project-root superpowers skills
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  const projectRootSkillsDir = path.resolve(moduleDir, "../../../../skills");
 
+  const skills: AvailableSkill[] = [];
+  const seen = new Set<string>();
+
+  // Scan ~/.claude/skills/
   try {
     const entries = fs.readdirSync(claudeSkillsDir, { withFileTypes: true });
     for (const entry of entries) {
@@ -205,8 +205,31 @@ function listAvailableSkills(): AvailableSkill[] {
         description,
         isPaperclipManaged: paperclipSkillNames.has(entry.name),
       });
+      seen.add(entry.name);
     }
   } catch { /* ~/.claude/skills/ doesn't exist */ }
+
+  // Scan project-root skills/ (superpowers skills)
+  try {
+    const entries = fs.readdirSync(projectRootSkillsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name.startsWith(".")) continue;
+      if (seen.has(entry.name)) continue; // don't duplicate
+      const skillMdPath = path.join(projectRootSkillsDir, entry.name, "SKILL.md");
+      let description = "";
+      try {
+        const md = fs.readFileSync(skillMdPath, "utf8");
+        description = parseSkillFrontmatter(md).description;
+      } catch { continue; /* no SKILL.md, skip */ }
+      skills.push({
+        name: entry.name,
+        description,
+        isPaperclipManaged: false,
+      });
+      seen.add(entry.name);
+    }
+  } catch { /* project-root skills/ doesn't exist */ }
 
   skills.sort((a, b) => a.name.localeCompare(b.name));
   return skills;
