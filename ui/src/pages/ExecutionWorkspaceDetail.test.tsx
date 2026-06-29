@@ -2,7 +2,8 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ExecutionWorkspace, Project, RoutineListItem } from "@paperclipai/shared";
-import { act, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExecutionWorkspaceDetail } from "./ExecutionWorkspaceDetail";
@@ -239,9 +240,7 @@ async function flush() {
 async function waitForCondition(condition: () => boolean) {
   for (let index = 0; index < 20; index += 1) {
     if (condition()) return;
-    await act(async () => {
-      await flush();
-    });
+    await flush();
   }
   expect(condition()).toBe(true);
 }
@@ -266,7 +265,7 @@ describe("ExecutionWorkspaceDetail plugin slots", () => {
   });
 
   afterEach(() => {
-    act(() => root?.unmount());
+    flushSync(() => root?.unmount());
     root = null;
     container.remove();
     vi.clearAllMocks();
@@ -276,7 +275,7 @@ describe("ExecutionWorkspaceDetail plugin slots", () => {
 
   async function render() {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    await act(async () => {
+    flushSync(() => {
       root = createRoot(container);
       root.render(
         <QueryClientProvider client={queryClient}>
@@ -284,9 +283,7 @@ describe("ExecutionWorkspaceDetail plugin slots", () => {
         </QueryClientProvider>,
       );
     });
-    await act(async () => {
-      await flush();
-    });
+    await flush();
   }
 
   it("scopes the plugin detail-tab discovery to execution_workspace and the workspace's company", async () => {
